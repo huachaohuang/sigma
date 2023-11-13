@@ -6,7 +6,7 @@ use crate::{Error, Radix, Result, Span};
 pub(crate) struct Lexer<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
-    backup: Option<(usize, char)>,
+    saved: Option<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
@@ -14,27 +14,16 @@ impl<'a> Lexer<'a> {
         Self {
             input,
             chars: input.char_indices(),
-            backup: None,
+            saved: None,
         }
     }
 
-    fn get(&mut self) -> Option<(usize, char)> {
-        self.backup.take().or_else(|| self.chars.next())
+    fn take(&mut self) -> Option<(usize, char)> {
+        self.saved.take().or_else(|| self.chars.next())
     }
 
-    fn eat(&mut self, mut f: impl FnMut(char) -> bool) -> Option<(usize, char)> {
-        self.get().and_then(|(i, c)| {
-            if f(c) {
-                Some((i, c))
-            } else {
-                self.put(i, c);
-                None
-            }
-        })
-    }
-
-    fn put(&mut self, i: usize, c: char) {
-        self.backup = Some((i, c));
+    fn save(&mut self, i: usize, c: char) {
+        self.saved = Some((i, c));
     }
 
     fn slice(&self, span: Span) -> &'a str {
@@ -42,8 +31,19 @@ impl<'a> Lexer<'a> {
         unsafe { self.input.get_unchecked(span) }
     }
 
+    fn take_if(&mut self, f: impl FnOnce(char) -> bool) -> Option<(usize, char)> {
+        self.take().and_then(|(i, c)| {
+            if f(c) {
+                Some((i, c))
+            } else {
+                self.save(i, c);
+                None
+            }
+        })
+    }
+
     fn skip_while(&mut self, mut f: impl FnMut(char) -> bool) -> Option<(usize, char)> {
-        while let Some((i, c)) = self.get() {
+        while let Some((i, c)) = self.take() {
             if !f(c) {
                 return Some((i, c));
             }
@@ -52,37 +52,37 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_str(&mut self, start: usize) -> Result<(Span, Token<'a>)> {
-        while let Some((i, c)) = self.get() {
+        while let Some((i, c)) = self.take() {
             match c {
                 '"' => return Ok((start..i + 1, Token::Str(self.slice(start + 1..i)))),
                 '\\' => {
-                    let _ = self.get();
+                    let _ = self.take();
                 }
                 _ => {}
             }
         }
         Err(Error::invalid_token(
             start..self.input.len(),
-            "unterminated string",
+            "unterminated string literal",
         ))
     }
 
     fn parse_num(&mut self, start: usize, first: char) -> Result<(Span, Token<'a>)> {
         if first == '0' {
-            if let Some((i, c)) = self.get() {
+            if let Some((i, c)) = self.take() {
                 match c {
                     'b' => return self.parse_int(start, Radix::Bin, is_bin_digit),
                     'o' => return self.parse_int(start, Radix::Oct, is_oct_digit),
                     'x' => return self.parse_int(start, Radix::Hex, is_hex_digit),
                     _ => {
-                        self.put(i, c);
+                        self.save(i, c);
                     }
                 }
             }
         }
 
         let end = self.parse_digits(is_dec_digit)?;
-        match self.eat(|c| c == '.') {
+        match self.take_if(|c| c == '.') {
             Some((i, _)) => {
                 let end = match self.parse_decimal()? {
                     Some(end) => self.parse_exponent()?.unwrap_or(end),
@@ -101,22 +101,26 @@ impl<'a> Lexer<'a> {
         &mut self,
         start: usize,
         radix: Radix,
-        f: impl FnMut(char) -> bool,
+        is_digit: impl Fn(char) -> bool,
     ) -> Result<(Span, Token<'a>)> {
-        let end = self.parse_digits(f)?;
+        let end = self.parse_digits(is_digit)?;
+        if end == start + 2 {
+            return Err(Error::invalid_token(start..end, "invalid number literal"));
+        }
         Ok((start..end, Token::Int(self.slice(start + 2..end), radix)))
     }
 
-    fn parse_digits(&mut self, mut f: impl FnMut(char) -> bool) -> Result<usize> {
-        while let Some((i, c)) = self.get() {
+    fn parse_digits(&mut self, is_digit: impl Fn(char) -> bool) -> Result<usize> {
+        while let Some((i, c)) = self.take() {
             match c {
-                '_' => match self.get() {
-                    Some((_, c)) if f(c) => {}
-                    _ => return Err(Error::invalid_token(i..i + 1, "expect digits after '_'")),
-                },
-                c if f(c) => {}
+                '_' => {
+                    if self.take_if(&is_digit).is_none() {
+                        return Err(Error::invalid_token(i..i + 1, "expect digits after '_'"));
+                    }
+                }
+                c if is_digit(c) => {}
                 _ => {
-                    self.put(i, c);
+                    self.save(i, c);
                     return Ok(i);
                 }
             }
@@ -125,20 +129,16 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_decimal(&mut self) -> Result<Option<usize>> {
-        match self.get() {
-            Some((_, c)) if is_dec_digit(c) => self.parse_digits(is_dec_digit).map(Some),
-            Some((i, c)) => {
-                self.put(i, c);
-                Ok(None)
-            }
+        match self.take_if(is_dec_digit) {
+            Some(_) => self.parse_digits(is_dec_digit).map(Some),
             None => Ok(None),
         }
     }
 
     fn parse_exponent(&mut self) -> Result<Option<usize>> {
-        match self.eat(|c| c == 'e' || c == 'E') {
+        match self.take_if(|c| c == 'e' || c == 'E') {
             Some((i, c)) => {
-                let (i, c) = self.eat(|c| c == '+' || c == '-').unwrap_or((i, c));
+                let (i, c) = self.take_if(|c| c == '+' || c == '-').unwrap_or((i, c));
                 match self.parse_decimal()? {
                     Some(end) => Ok(Some(end)),
                     None => Err(Error::invalid_token(
@@ -152,10 +152,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn check_num_suffix(&mut self) -> Result<()> {
-        match self.eat(is_ident_start) {
+        match self.take_if(is_ident_start) {
             Some((i, _)) => Err(Error::invalid_token(
                 i..i + 1,
-                "invalid suffix after number",
+                "invalid suffix after number literal",
             )),
             None => Ok(()),
         }
@@ -171,12 +171,12 @@ impl<'a> Lexer<'a> {
 
     fn parse_punct(&mut self, start: usize, first: char) -> Result<(Span, Token<'a>)> {
         let mut end = start + 1;
-        let mut lookahead = |left: Punct, next: char, right: Punct| match self.eat(|c| c == next) {
+        let mut lookahead = |next, matched, default| match self.take_if(|c| c == next) {
             Some((i, _)) => {
                 end = i + 1;
-                left
+                matched
             }
-            None => right,
+            None => default,
         };
 
         use Punct::*;
@@ -190,15 +190,15 @@ impl<'a> Lexer<'a> {
             '}' => RBrace,
             '[' => LBracket,
             ']' => RBracket,
-            '=' => lookahead(Eq, '=', EqEq),
-            '!' => lookahead(Not, '=', NotEq),
-            '<' => lookahead(LAngle, '=', LAngleEq),
-            '>' => lookahead(RAngle, '=', RAngleEq),
-            '+' => lookahead(Plus, '=', PlusEq),
-            '-' => lookahead(Minus, '=', MinusEq),
-            '*' => lookahead(Star, '=', StarEq),
-            '/' => lookahead(Slash, '=', SlashEq),
-            '%' => lookahead(Percent, '=', PercentEq),
+            '=' => lookahead('=', EqEq, Eq),
+            '!' => lookahead('=', NotEq, Not),
+            '<' => lookahead('=', LAngleEq, LAngle),
+            '>' => lookahead('=', RAngleEq, RAngle),
+            '+' => lookahead('=', PlusEq, Plus),
+            '-' => lookahead('=', MinusEq, Minus),
+            '*' => lookahead('=', StarEq, Star),
+            '/' => lookahead('=', SlashEq, Slash),
+            '%' => lookahead('=', PercentEq, Percent),
             _ => return Err(Error::invalid_token(start..start + 1, "")),
         };
         Ok((start..start + 1, Token::Punct(punct)))

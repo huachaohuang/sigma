@@ -9,6 +9,7 @@ use lexer::Lexer;
 
 pub type Span = std::ops::Range<usize>;
 
+#[derive(Clone, Debug)]
 pub enum Radix {
     Bin,
     Oct,
@@ -25,5 +26,13 @@ impl<'a> Parser<'a> {
         Self {
             lexer: Lexer::new(input),
         }
+    }
+}
+
+impl<'a> Iterator for Parser<'a> {
+    type Item = Result<(Span, Token<'a>)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lexer.next()
     }
 }

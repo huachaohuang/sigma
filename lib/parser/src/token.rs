@@ -1,8 +1,12 @@
 use crate::Radix;
 
-pub(crate) enum Token<'a> {
+#[derive(Clone, Debug)]
+pub enum Token<'a> {
     // Identifier or keyword
     Ident(&'a str),
+
+    // String literal
+    Str(&'a str),
 
     // Integer literal
     Int(&'a str, Radix),
@@ -10,14 +14,12 @@ pub(crate) enum Token<'a> {
     // Floating-point literal
     Float(&'a str),
 
-    // String literal
-    Str(&'a str),
-
     // Punctuation
     Punct(Punct),
 }
 
-pub(crate) enum Punct {
+#[derive(Clone, Debug)]
+pub enum Punct {
     Semi,
     Colon,
     Comma,

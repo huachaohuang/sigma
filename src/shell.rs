@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use sigma_parser::Parser;
 
 #[derive(Default)]
 pub struct Shell;
@@ -13,12 +14,19 @@ impl Shell {
             match rl.readline(">>> ") {
                 Ok(line) => {
                     let _ = rl.add_history_entry(&line);
-                    println!("{line}");
+                    self.exec(&line);
                 }
                 Err(ReadlineError::Interrupted) => continue,
                 Err(ReadlineError::Eof) => return Ok(()),
                 Err(err) => return Err(err.into()),
             }
+        }
+    }
+
+    fn exec(&self, line: &str) {
+        let parser = Parser::new(line);
+        for stmt in parser {
+            println!("{stmt:?}");
         }
     }
 }

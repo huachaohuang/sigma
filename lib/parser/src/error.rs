@@ -1,5 +1,6 @@
 use crate::Span;
 
+#[derive(Clone, Debug)]
 pub struct Error {
     pub span: Span,
     pub kind: ErrorKind,
@@ -14,6 +15,7 @@ impl Error {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ErrorKind {
     InvalidToken(String),
 }

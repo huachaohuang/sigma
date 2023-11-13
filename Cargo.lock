@@ -128,10 +128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parser"
-version = "0.1.0"
-
-[[package]]
 name = "radix_trie"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,7 +185,12 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "rustyline",
+ "sigma-parser",
 ]
+
+[[package]]
+name = "sigma-parser"
+version = "0.1.0"
 
 [[package]]
 name = "smallvec"
