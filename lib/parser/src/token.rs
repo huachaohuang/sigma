@@ -1,7 +1,12 @@
+use std::fmt;
+
 use crate::Radix;
 
 #[derive(Clone, Debug)]
-pub enum Token<'a> {
+pub(crate) enum Token<'a> {
+    // End of input
+    End,
+
     // Identifier or keyword
     Ident(&'a str),
 
@@ -18,11 +23,13 @@ pub enum Token<'a> {
     Punct(Punct),
 }
 
-#[derive(Clone, Debug)]
-pub enum Punct {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Punct {
     Semi,
     Colon,
     Comma,
+    Dot,
+    DotDot,
     LParen,
     RParen,
     LBrace,
@@ -47,4 +54,47 @@ pub enum Punct {
     SlashEq,
     Percent,
     PercentEq,
+}
+
+impl Punct {
+    pub(crate) const fn as_str(&self) -> &'static str {
+        use Punct::*;
+        match self {
+            Semi => ";",
+            Colon => ":",
+            Comma => ",",
+            Dot => ".",
+            DotDot => "..",
+            LParen => "(",
+            RParen => ")",
+            LBrace => "{",
+            RBrace => "}",
+            LBracket => "[",
+            RBracket => "]",
+            Eq => "=",
+            EqEq => "==",
+            Not => "!",
+            NotEq => "!=",
+            LAngle => "<",
+            LAngleEq => "<=",
+            RAngle => ">",
+            RAngleEq => ">=",
+            Plus => "+",
+            PlusEq => "+=",
+            Minus => "-",
+            MinusEq => "-=",
+            Star => "*",
+            StarEq => "*=",
+            Slash => "/",
+            SlashEq => "/=",
+            Percent => "%",
+            PercentEq => "%=",
+        }
+    }
+}
+
+impl fmt::Display for Punct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }

@@ -18,6 +18,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    pub(crate) fn next(&mut self) -> Result<(Span, Token<'a>)> {
+        match self.skip_while(|c| c.is_whitespace()) {
+            Some((i, c)) => match c {
+                '"' => self.parse_str(i),
+                c if is_dec_digit(c) => {
+                    let num = self.parse_num(i, c)?;
+                    self.check_num_suffix().map(|_| num)
+                }
+                c if is_ident_start(c) => self.parse_ident(i),
+                _ => self.parse_punct(i, c),
+            },
+            None => {
+                let len = self.input.len();
+                Ok((len..len, Token::End))
+            }
+        }
+    }
+
     fn take(&mut self) -> Option<(usize, char)> {
         self.saved.take().or_else(|| self.chars.next())
     }
@@ -105,7 +123,10 @@ impl<'a> Lexer<'a> {
     ) -> Result<(Span, Token<'a>)> {
         let end = self.parse_digits(is_digit)?;
         if end == start + 2 {
-            return Err(Error::invalid_token(start..end, "invalid number literal"));
+            return Err(Error::invalid_token(
+                start..end,
+                format!("expect digits after '{}'", self.slice(start..end)),
+            ));
         }
         Ok((start..end, Token::Int(self.slice(start + 2..end), radix)))
     }
@@ -155,7 +176,7 @@ impl<'a> Lexer<'a> {
         match self.take_if(is_ident_start) {
             Some((i, _)) => Err(Error::invalid_token(
                 i..i + 1,
-                "invalid suffix after number literal",
+                "unexpected suffix after number literal",
             )),
             None => Ok(()),
         }
@@ -184,6 +205,7 @@ impl<'a> Lexer<'a> {
             ';' => Semi,
             ':' => Colon,
             ',' => Comma,
+            '.' => lookahead('.', DotDot, Dot),
             '(' => LParen,
             ')' => RParen,
             '{' => LBrace,
@@ -202,23 +224,6 @@ impl<'a> Lexer<'a> {
             _ => return Err(Error::invalid_token(start..start + 1, "")),
         };
         Ok((start..start + 1, Token::Punct(punct)))
-    }
-}
-
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<(Span, Token<'a>)>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.skip_while(|c| c.is_whitespace())
-            .map(|(i, c)| match c {
-                '"' => self.parse_str(i),
-                c if is_dec_digit(c) => {
-                    let num = self.parse_num(i, c)?;
-                    self.check_num_suffix().map(|_| num)
-                }
-                c if is_ident_start(c) => self.parse_ident(i),
-                _ => self.parse_punct(i, c),
-            })
     }
 }
 
