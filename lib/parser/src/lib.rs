@@ -15,7 +15,7 @@ use keyword::*;
 
 pub type Span = std::ops::Range<usize>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Radix {
     Bin,
     Oct,
@@ -52,8 +52,8 @@ impl<'a> Parser<'a> {
         match token {
             Token::Ident(s) if s == x => Ok(span),
             _ => {
-                self.save(span.clone(), token);
-                Err(Error::unexpected_token(span, format!("expect '{}'", x)))
+                self.save(span.clone(), token.clone());
+                Err(token_error(span, token, format!("expect '{}'", x)))
             }
         }
     }
@@ -74,8 +74,8 @@ impl<'a> Parser<'a> {
         match token {
             Token::Punct(p) if p == x => Ok(span),
             _ => {
-                self.save(span.clone(), token);
-                Err(Error::unexpected_token(span, format!("expect '{x}'")))
+                self.save(span.clone(), token.clone());
+                Err(token_error(span, token, format!("expect '{x}'")))
             }
         }
     }
@@ -288,7 +288,7 @@ impl<'a> Parser<'a> {
             Token::Punct(Punct::LParen) => self.parse_paren_expr(span.start),
             Token::Punct(Punct::LBrace) => self.parse_brace_expr(span.start),
             Token::Punct(Punct::LBracket) => self.parse_bracket_expr(span.start),
-            _ => Err(Error::unexpected_token(span, "expect an expression")),
+            _ => Err(token_error(span, token, "expect an expression")),
         }
     }
 
@@ -303,7 +303,7 @@ impl<'a> Parser<'a> {
         let name = match token {
             Token::Str(s) => s,
             Token::Ident(s) => s,
-            _ => return Err(Error::unexpected_token(span, "expect a field name")),
+            _ => return Err(token_error(span, token, "expect a field name")),
         };
         Ok(Field { span, name })
     }
@@ -354,5 +354,13 @@ impl<'a> Iterator for Parser<'a> {
             Ok((span, token)) => Some(self.parse_stmt(span, token)),
             Err(err) => Some(Err(err)),
         }
+    }
+}
+
+fn token_error(span: Span, token: Token, message: impl ToString) -> Error {
+    if matches!(token, Token::End) {
+        Error::incomplete(span, message)
+    } else {
+        Error::unexpected_token(span, message)
     }
 }
