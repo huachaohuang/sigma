@@ -76,6 +76,16 @@ impl<'a> Expr<'a> {
         let span = lhs.span.start..rhs.span.end;
         Self::new(span, ExprKind::BoolOp(op, lhs.into(), rhs.into()))
     }
+
+    pub(crate) fn assign(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+        let span = lhs.span.start..rhs.span.end;
+        Self::new(span, ExprKind::Assign(lhs.into(), rhs.into()))
+    }
+
+    pub(crate) fn compound_assign(op: Spanned<BinOp>, lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+        let span = lhs.span.start..rhs.span.end;
+        Self::new(span, ExprKind::CompoundAssign(op, lhs.into(), rhs.into()))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +101,8 @@ pub enum ExprKind<'a> {
     BinOp(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     CmpOp(Spanned<CmpOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     BoolOp(Spanned<BoolOp>, Box<Expr<'a>>, Box<Expr<'a>>),
+    Assign(Box<Expr<'a>>, Box<Expr<'a>>),
+    CompoundAssign(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
 }
 
 #[derive(Clone, Debug)]

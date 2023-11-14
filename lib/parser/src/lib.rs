@@ -97,7 +97,30 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     fn parse_expr(&mut self) -> Result<Expr<'a>> {
-        self.parse_lazy_or_expr()
+        let expr = self.parse_lazy_or_expr()?;
+        let (span, token) = self.take()?;
+        let kind = match token {
+            Token::Punct(Punct::Eq) => {
+                let value = self.parse_expr()?;
+                return Ok(Expr::assign(expr, value));
+            }
+            Token::Punct(Punct::OrEq) => BinOp::Or,
+            Token::Punct(Punct::XorEq) => BinOp::Xor,
+            Token::Punct(Punct::AndEq) => BinOp::And,
+            Token::Punct(Punct::LShiftEq) => BinOp::Shl,
+            Token::Punct(Punct::RShiftEq) => BinOp::Shr,
+            Token::Punct(Punct::PlusEq) => BinOp::Add,
+            Token::Punct(Punct::MinusEq) => BinOp::Sub,
+            Token::Punct(Punct::StarEq) => BinOp::Mul,
+            Token::Punct(Punct::SlashEq) => BinOp::Div,
+            Token::Punct(Punct::PercentEq) => BinOp::Rem,
+            _ => {
+                self.save(span, token);
+                return Ok(expr);
+            }
+        };
+        let value = self.parse_expr()?;
+        Ok(Expr::compound_assign(Spanned::new(span, kind), expr, value))
     }
 
     fn parse_lazy_or_expr(&mut self) -> Result<Expr<'a>> {
