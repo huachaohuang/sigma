@@ -1,25 +1,10 @@
 use sigma_parser::ast::*;
-use sigma_parser::Span;
+
+mod error;
+pub use error::{Error, Result};
 
 mod object;
 pub use object::Object;
-
-#[derive(Debug)]
-pub struct Error {
-    span: Span,
-    message: String,
-}
-
-impl Error {
-    fn new(span: Span, message: impl ToString) -> Self {
-        Self {
-            span,
-            message: message.to_string(),
-        }
-    }
-}
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Default)]
 pub struct Runtime;
@@ -35,9 +20,18 @@ struct Core {
 }
 
 impl Core {
+    fn var(&self, name: &str) -> Option<Object> {
+        todo!()
+    }
+
+    fn set_var(&self, name: String, value: Object) {
+        todo!()
+    }
+
     fn eval(&mut self, expr: &Expr) -> Result<Object> {
         match &expr.kind {
             ExprKind::Lit(lit) => self.eval_lit(lit),
+            ExprKind::Name(name) => self.eval_name(name),
             ExprKind::List(list) => self.eval_list(list),
             ExprKind::Hash(hash) => self.eval_hash(hash),
             ExprKind::Index(expr, index) => self.eval_index(expr, index),
@@ -68,6 +62,15 @@ impl Core {
         }
     }
 
+    fn eval_name(&mut self, ident: &Ident) -> Result<Object> {
+        self.var(ident.name).ok_or_else(|| {
+            Error::new(
+                ident.span.clone(),
+                format!("name '{}' is not defined", ident.name),
+            )
+        })
+    }
+
     fn eval_list(&mut self, list: &[Expr]) -> Result<Object> {
         list.iter()
             .map(|expr| self.eval(expr))
@@ -83,30 +86,30 @@ impl Core {
     }
 
     fn eval_index(&mut self, expr: &Expr, index: &Expr) -> Result<Object> {
-        let ob = self.eval(expr)?;
-        let index = self.eval(index)?;
-        todo!()
+        let this = self.eval(expr)?;
+        let value = self.eval(index)?;
+        this.index(&value)
     }
 
     fn eval_field(&mut self, expr: &Expr, field: &Field) -> Result<Object> {
-        let ob = self.eval(expr)?;
-        todo!()
+        let this = self.eval(expr)?;
+        this.field(field.name)
     }
 
     fn eval_unop(&mut self, op: &Spanned<UnOp>, expr: &Expr) -> Result<Object> {
-        let ob = self.eval(expr)?;
-        todo!()
+        let this = self.eval(expr)?;
+        this.unop(op.kind)
     }
 
     fn eval_binop(&mut self, op: &Spanned<BinOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
-        let lv = self.eval(lhs)?;
-        let rv = self.eval(rhs)?;
-        todo!()
+        let this = self.eval(lhs)?;
+        let other = self.eval(rhs)?;
+        this.binop(op.kind, &other)
     }
 
     fn eval_cmpop(&mut self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
-        let lv = self.eval(lhs)?;
-        let rv = self.eval(rhs)?;
+        let this = self.eval(lhs)?;
+        let other = self.eval(rhs)?;
         todo!()
     }
 
@@ -117,7 +120,27 @@ impl Core {
 
     fn eval_assign(&mut self, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let value = self.eval(rhs)?;
-        todo!()
+        match &lhs.kind {
+            ExprKind::Name(ident) => {
+                self.set_var(ident.name.into(), value.clone());
+                Ok(value)
+            }
+            ExprKind::Index(expr, index) => {
+                let this = self.eval(expr)?;
+                let index = self.eval(index)?;
+                this.set_index(&index, value.clone())?;
+                Ok(value)
+            }
+            ExprKind::Field(expr, field) => {
+                let this = self.eval(expr)?;
+                this.set_field(field.name, value.clone())?;
+                Ok(value)
+            }
+            _ => Err(Error::new(
+                lhs.span.clone(),
+                "invalid target for assignment",
+            )),
+        }
     }
 
     fn eval_compound_assign(
@@ -127,7 +150,33 @@ impl Core {
         rhs: &Expr,
     ) -> Result<Object> {
         let value = self.eval(rhs)?;
-        todo!()
+        match &lhs.kind {
+            ExprKind::Name(ident) => {
+                let old_value = self.eval_name(ident)?;
+                let new_value = old_value.binop(op.kind, &value)?;
+                self.set_var(ident.name.into(), new_value.clone());
+                Ok(new_value)
+            }
+            ExprKind::Index(expr, index) => {
+                let this = self.eval(expr)?;
+                let index = self.eval(index)?;
+                let old_value = this.index(&index)?;
+                let new_value = old_value.binop(op.kind, &value)?;
+                this.set_index(&index, new_value.clone())?;
+                Ok(new_value)
+            }
+            ExprKind::Field(expr, field) => {
+                let this = self.eval(expr)?;
+                let old_value = this.field(field.name)?;
+                let new_value = old_value.binop(op.kind, &value)?;
+                this.set_field(field.name, new_value.clone())?;
+                Ok(new_value)
+            }
+            _ => Err(Error::new(
+                lhs.span.clone(),
+                "invalid target for assignment",
+            )),
+        }
     }
 }
 
