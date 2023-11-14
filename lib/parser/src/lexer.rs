@@ -191,39 +191,87 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_punct(&mut self, start: usize, first: char) -> Result<(Span, Token<'a>)> {
-        let mut end = start + 1;
-        let mut lookahead = |next, matched, default| match self.take_if(|c| c == next) {
-            Some((i, _)) => {
-                end = i + 1;
-                matched
-            }
-            None => default,
-        };
-
         use Punct::*;
-        let punct = match first {
-            ';' => Semi,
-            ':' => Colon,
-            ',' => Comma,
-            '.' => lookahead('.', DotDot, Dot),
-            '(' => LParen,
-            ')' => RParen,
-            '{' => LBrace,
-            '}' => RBrace,
-            '[' => LBracket,
-            ']' => RBracket,
-            '=' => lookahead('=', EqEq, Eq),
-            '!' => lookahead('=', NotEq, Not),
-            '<' => lookahead('=', LAngleEq, LAngle),
-            '>' => lookahead('=', RAngleEq, RAngle),
-            '+' => lookahead('=', PlusEq, Plus),
-            '-' => lookahead('=', MinusEq, Minus),
-            '*' => lookahead('=', StarEq, Star),
-            '/' => lookahead('=', SlashEq, Slash),
-            '%' => lookahead('=', PercentEq, Percent),
+        let (punct, count) = match first {
+            ';' => (Semi, 1),
+            ':' => (Colon, 1),
+            ',' => (Comma, 1),
+            '.' => self.parse_punct_1(Dot, '.', DotDot),
+            '(' => (LParen, 1),
+            ')' => (RParen, 1),
+            '{' => (LBrace, 1),
+            '}' => (RBrace, 1),
+            '[' => (LBracket, 1),
+            ']' => (RBracket, 1),
+            '=' => self.parse_punct_1(Eq, '=', EqEq),
+            '!' => self.parse_punct_1(Not, '=', NotEq),
+            '+' => self.parse_punct_1(Plus, '=', PlusEq),
+            '-' => self.parse_punct_1(Minus, '=', MinusEq),
+            '*' => self.parse_punct_1(Star, '=', StarEq),
+            '/' => self.parse_punct_1(Slash, '=', SlashEq),
+            '%' => self.parse_punct_1(Percent, '=', PercentEq),
+            '|' => self.parse_punct_2(Or, '=', OrEq, '|', OrOr),
+            '^' => self.parse_punct_1(Xor, '=', XorEq),
+            '&' => self.parse_punct_2(And, '=', AndEq, '&', AndAnd),
+            '<' => self.parse_punct_3(LAngle, '=', LAngleEq, '<', LShift, '=', LShiftEq),
+            '>' => self.parse_punct_3(RAngle, '=', RAngleEq, '>', RShift, '=', RShiftEq),
             _ => return Err(Error::invalid_token(start..start + 1, "")),
         };
-        Ok((start..start + 1, Token::Punct(punct)))
+        Ok((start..start + count, Token::Punct(punct)))
+    }
+
+    fn parse_punct_1(&mut self, default: Punct, x: char, matched: Punct) -> (Punct, usize) {
+        match self.take() {
+            Some((_, c)) if c == x => (matched, 2),
+            Some((i, c)) => {
+                self.save(i, c);
+                (default, 1)
+            }
+            None => (default, 1),
+        }
+    }
+
+    fn parse_punct_2(
+        &mut self,
+        default: Punct,
+        x1: char,
+        matched1: Punct,
+        x2: char,
+        matched2: Punct,
+    ) -> (Punct, usize) {
+        match self.take() {
+            Some((_, c)) if c == x1 => (matched1, 2),
+            Some((_, c)) if c == x2 => (matched2, 2),
+            Some((i, c)) => {
+                self.save(i, c);
+                (default, 1)
+            }
+            None => (default, 1),
+        }
+    }
+
+    fn parse_punct_3(
+        &mut self,
+        default: Punct,
+        x1: char,
+        matched1: Punct,
+        x2: char,
+        matched2: Punct,
+        x3: char,
+        matched3: Punct,
+    ) -> (Punct, usize) {
+        match self.take() {
+            Some((_, c)) if c == x1 => (matched1, 2),
+            Some((_, c)) if c == x2 => {
+                let (punct, count) = self.parse_punct_1(matched2, x3, matched3);
+                (punct, count + 1)
+            }
+            Some((i, c)) => {
+                self.save(i, c);
+                (default, 1)
+            }
+            None => (default, 1),
+        }
     }
 }
 

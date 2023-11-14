@@ -4,11 +4,14 @@ use ast::*;
 mod error;
 pub use error::{Error, Result};
 
+mod lexer;
+use lexer::Lexer;
+
 mod token;
 use token::*;
 
-mod lexer;
-use lexer::Lexer;
+mod keyword;
+use keyword::*;
 
 pub type Span = std::ops::Range<usize>;
 
@@ -42,6 +45,17 @@ impl<'a> Parser<'a> {
 
     fn save(&mut self, span: Span, token: Token<'a>) {
         self.saved = Some((span, token));
+    }
+
+    fn expect_kw(&mut self, x: &str) -> Result<Span> {
+        let (span, token) = self.take()?;
+        match token {
+            Token::Ident(s) if s == x => Ok(span),
+            _ => {
+                self.save(span.clone(), token);
+                Err(Error::unexpected_token(span, format!("expect '{}'", x)))
+            }
+        }
     }
 
     fn maybe_punct(&mut self, x: Punct) -> Result<Option<Span>> {
@@ -83,7 +97,161 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     fn parse_expr(&mut self) -> Result<Expr<'a>> {
-        self.parse_primary_expr()
+        self.parse_lazy_or_expr()
+    }
+
+    fn parse_lazy_or_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_lazy_and_expr()?;
+        while let Some(span) = self.maybe_punct(Punct::OrOr)? {
+            let rhs = self.parse_lazy_and_expr()?;
+            lhs = Expr::boolop(Spanned::new(span, BoolOp::Or), lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_lazy_and_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_cmp_expr()?;
+        while let Some(span) = self.maybe_punct(Punct::AndAnd)? {
+            let rhs = self.parse_cmp_expr()?;
+            lhs = Expr::boolop(Spanned::new(span, BoolOp::And), lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_cmp_op(&mut self) -> Result<Option<Spanned<CmpOp>>> {
+        let (span, token) = self.take()?;
+        let op = match token {
+            Token::Punct(Punct::EqEq) => CmpOp::Eq,
+            Token::Punct(Punct::NotEq) => CmpOp::Ne,
+            Token::Punct(Punct::LAngle) => CmpOp::Lt,
+            Token::Punct(Punct::LAngleEq) => CmpOp::Le,
+            Token::Punct(Punct::RAngle) => CmpOp::Gt,
+            Token::Punct(Punct::RAngleEq) => CmpOp::Ge,
+            Token::Ident(IN) => CmpOp::In,
+            Token::Ident(NOT) => {
+                self.expect_kw(IN)?;
+                CmpOp::NotIn
+            }
+            _ => {
+                self.save(span, token);
+                return Ok(None);
+            }
+        };
+        Ok(Some(Spanned::new(span, op)))
+    }
+
+    fn parse_cmp_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_or_expr()?;
+        while let Some(op) = self.parse_cmp_op()? {
+            let rhs = self.parse_or_expr()?;
+            lhs = Expr::cmpop(op, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_or_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_xor_expr()?;
+        while let Some(span) = self.maybe_punct(Punct::Or)? {
+            let rhs = self.parse_xor_expr()?;
+            lhs = Expr::binop(Spanned::new(span, BinOp::Or), lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_xor_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_and_expr()?;
+        while let Some(span) = self.maybe_punct(Punct::Xor)? {
+            let rhs = self.parse_and_expr()?;
+            lhs = Expr::binop(Spanned::new(span, BinOp::Xor), lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_and_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_shift_expr()?;
+        while let Some(span) = self.maybe_punct(Punct::And)? {
+            let rhs = self.parse_shift_expr()?;
+            lhs = Expr::binop(Spanned::new(span, BinOp::And), lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_shift_op(&mut self) -> Result<Option<Spanned<BinOp>>> {
+        let (span, token) = self.take()?;
+        let kind = match token {
+            Token::Punct(Punct::LShift) => BinOp::Shl,
+            Token::Punct(Punct::RShift) => BinOp::Shr,
+            _ => {
+                self.save(span, token);
+                return Ok(None);
+            }
+        };
+        Ok(Some(Spanned::new(span, kind)))
+    }
+
+    fn parse_shift_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_add_expr()?;
+        while let Some(op) = self.parse_shift_op()? {
+            let rhs = self.parse_add_expr()?;
+            lhs = Expr::binop(op, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_add_op(&mut self) -> Result<Option<Spanned<BinOp>>> {
+        let (span, token) = self.take()?;
+        let kind = match token {
+            Token::Punct(Punct::Plus) => BinOp::Add,
+            Token::Punct(Punct::Minus) => BinOp::Sub,
+            _ => {
+                self.save(span, token);
+                return Ok(None);
+            }
+        };
+        Ok(Some(Spanned::new(span, kind)))
+    }
+
+    fn parse_add_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_mul_expr()?;
+        while let Some(op) = self.parse_add_op()? {
+            let rhs = self.parse_mul_expr()?;
+            lhs = Expr::binop(op, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_mul_op(&mut self) -> Result<Option<Spanned<BinOp>>> {
+        let (span, token) = self.take()?;
+        let kind = match token {
+            Token::Punct(Punct::Star) => BinOp::Mul,
+            Token::Punct(Punct::Slash) => BinOp::Div,
+            Token::Punct(Punct::Percent) => BinOp::Rem,
+            _ => {
+                self.save(span, token);
+                return Ok(None);
+            }
+        };
+        Ok(Some(Spanned::new(span, kind)))
+    }
+
+    fn parse_mul_expr(&mut self) -> Result<Expr<'a>> {
+        let mut lhs = self.parse_unary_expr()?;
+        while let Some(op) = self.parse_mul_op()? {
+            let rhs = self.parse_unary_expr()?;
+            lhs = Expr::binop(op, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_unary_expr(&mut self) -> Result<Expr<'a>> {
+        let (span, token) = self.take()?;
+        let op = match token {
+            Token::Punct(Punct::Not) => UnOp::Not,
+            Token::Punct(Punct::Minus) => UnOp::Neg,
+            _ => return self.parse_primary_expr(),
+        };
+        let expr = self.parse_unary_expr()?;
+        Ok(Expr::unop(Spanned::new(span, op), expr))
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr<'a>> {
@@ -116,10 +284,11 @@ impl<'a> Parser<'a> {
             Token::Str(s) => Ok(Expr::lit(span, LitKind::Str(s))),
             Token::Int(s, radix) => Ok(Expr::lit(span, LitKind::Int(s, radix))),
             Token::Float(s) => Ok(Expr::lit(span, LitKind::Float(s))),
+            Token::Ident(name) => Ok(Expr::name(span, name)),
             Token::Punct(Punct::LParen) => self.parse_paren_expr(span.start),
             Token::Punct(Punct::LBrace) => self.parse_brace_expr(span.start),
             Token::Punct(Punct::LBracket) => self.parse_bracket_expr(span.start),
-            _ => todo!(),
+            _ => Err(Error::unexpected_token(span, "expect an expression")),
         }
     }
 
@@ -129,13 +298,14 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(start..span.end, expr.kind))
     }
 
-    fn parse_brace_expr(&mut self, start: usize) -> Result<Expr<'a>> {
-        self.parse_terminated_list(Punct::RBrace, Self::parse_field_pair)
-            .map(|(list, span)| Expr::hash(start..span.end, list))
-    }
-
     fn parse_field(&mut self) -> Result<Field<'a>> {
-        todo!()
+        let (span, token) = self.take()?;
+        let name = match token {
+            Token::Str(s) => s,
+            Token::Ident(s) => s,
+            _ => return Err(Error::unexpected_token(span, "expect a field name")),
+        };
+        Ok(Field { span, name })
     }
 
     fn parse_field_pair(&mut self) -> Result<(Field<'a>, Expr<'a>)> {
@@ -143,6 +313,11 @@ impl<'a> Parser<'a> {
         self.expect_punct(Punct::Colon)?;
         let value = self.parse_expr()?;
         Ok((field, value))
+    }
+
+    fn parse_brace_expr(&mut self, start: usize) -> Result<Expr<'a>> {
+        self.parse_terminated_list(Punct::RBrace, Self::parse_field_pair)
+            .map(|(list, span)| Expr::hash(start..span.end, list))
     }
 
     fn parse_bracket_expr(&mut self, start: usize) -> Result<Expr<'a>> {
