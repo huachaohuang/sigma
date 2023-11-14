@@ -1,3 +1,7 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use sigma_parser::ast::*;
 
 mod error;
@@ -6,29 +10,35 @@ pub use error::{Error, Result};
 mod object;
 pub use object::Object;
 
-#[derive(Default)]
-pub struct Runtime;
+pub struct Runtime {
+    global: Rc<Global>,
+    closure: Rc<RefCell<Closure>>,
+}
 
 impl Runtime {
+    pub fn new() -> Self {
+        let global = Rc::new(Global::new());
+        let closure = Rc::new(RefCell::new(Closure {
+            vars: Vars::new(),
+            outer: None,
+            global: global.clone(),
+        }));
+        Self { global, closure }
+    }
+
+    fn var(&self, name: &str) -> Option<Object> {
+        self.closure.borrow().var(name)
+    }
+
+    fn set_var(&self, name: impl ToString, value: Object) {
+        self.closure.borrow_mut().set_var(name.to_string(), value);
+    }
+
     pub fn exec(&self, stmt: &Stmt) -> Result<Option<Object>> {
         todo!()
     }
-}
 
-struct Core {
-    global: Global,
-}
-
-impl Core {
-    fn var(&self, name: &str) -> Option<Object> {
-        todo!()
-    }
-
-    fn set_var(&self, name: String, value: Object) {
-        todo!()
-    }
-
-    fn eval(&mut self, expr: &Expr) -> Result<Object> {
+    fn eval(&self, expr: &Expr) -> Result<Object> {
         match &expr.kind {
             ExprKind::Lit(lit) => self.eval_lit(lit),
             ExprKind::Name(name) => self.eval_name(name),
@@ -46,7 +56,7 @@ impl Core {
         }
     }
 
-    fn eval_lit(&mut self, lit: &Lit) -> Result<Object> {
+    fn eval_lit(&self, lit: &Lit) -> Result<Object> {
         match lit.kind {
             LitKind::Null => Ok(self.global.null.clone()),
             LitKind::Bool(true) => Ok(self.global.true_.clone()),
@@ -62,7 +72,7 @@ impl Core {
         }
     }
 
-    fn eval_name(&mut self, ident: &Ident) -> Result<Object> {
+    fn eval_name(&self, ident: &Ident) -> Result<Object> {
         self.var(ident.name).ok_or_else(|| {
             Error::new(
                 ident.span.clone(),
@@ -71,58 +81,58 @@ impl Core {
         })
     }
 
-    fn eval_list(&mut self, list: &[Expr]) -> Result<Object> {
+    fn eval_list(&self, list: &[Expr]) -> Result<Object> {
         list.iter()
             .map(|expr| self.eval(expr))
             .collect::<Result<Vec<_>>>()
             .map(|list| list.into())
     }
 
-    fn eval_hash(&mut self, hash: &[(Field, Expr)]) -> Result<Object> {
+    fn eval_hash(&self, hash: &[(Field, Expr)]) -> Result<Object> {
         hash.iter()
             .map(|(field, expr)| self.eval(expr).map(|value| (field.name.to_owned(), value)))
             .collect::<Result<Vec<_>>>()
             .map(|hash| hash.into())
     }
 
-    fn eval_index(&mut self, expr: &Expr, index: &Expr) -> Result<Object> {
+    fn eval_index(&self, expr: &Expr, index: &Expr) -> Result<Object> {
         let this = self.eval(expr)?;
         let value = self.eval(index)?;
         this.index(&value)
     }
 
-    fn eval_field(&mut self, expr: &Expr, field: &Field) -> Result<Object> {
+    fn eval_field(&self, expr: &Expr, field: &Field) -> Result<Object> {
         let this = self.eval(expr)?;
         this.field(field.name)
     }
 
-    fn eval_unop(&mut self, op: &Spanned<UnOp>, expr: &Expr) -> Result<Object> {
+    fn eval_unop(&self, op: &Spanned<UnOp>, expr: &Expr) -> Result<Object> {
         let this = self.eval(expr)?;
         this.unop(op.kind)
     }
 
-    fn eval_binop(&mut self, op: &Spanned<BinOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_binop(&self, op: &Spanned<BinOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let this = self.eval(lhs)?;
         let other = self.eval(rhs)?;
         this.binop(op.kind, &other)
     }
 
-    fn eval_cmpop(&mut self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_cmpop(&self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let this = self.eval(lhs)?;
         let other = self.eval(rhs)?;
         todo!()
     }
 
-    fn eval_boolop(&mut self, op: &Spanned<BoolOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_boolop(&self, op: &Spanned<BoolOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let lv = self.eval(lhs)?;
         todo!()
     }
 
-    fn eval_assign(&mut self, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_assign(&self, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let value = self.eval(rhs)?;
         match &lhs.kind {
             ExprKind::Name(ident) => {
-                self.set_var(ident.name.into(), value.clone());
+                self.set_var(ident.name, value.clone());
                 Ok(value)
             }
             ExprKind::Index(expr, index) => {
@@ -143,18 +153,13 @@ impl Core {
         }
     }
 
-    fn eval_compound_assign(
-        &mut self,
-        op: &Spanned<BinOp>,
-        lhs: &Expr,
-        rhs: &Expr,
-    ) -> Result<Object> {
+    fn eval_compound_assign(&self, op: &Spanned<BinOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let value = self.eval(rhs)?;
         match &lhs.kind {
             ExprKind::Name(ident) => {
                 let old_value = self.eval_name(ident)?;
                 let new_value = old_value.binop(op.kind, &value)?;
-                self.set_var(ident.name.into(), new_value.clone());
+                self.set_var(ident.name, new_value.clone());
                 Ok(new_value)
             }
             ExprKind::Index(expr, index) => {
@@ -184,4 +189,31 @@ struct Global {
     null: Object,
     true_: Object,
     false_: Object,
+}
+
+impl Global {
+    fn new() -> Self {
+        todo!()
+    }
+}
+
+type Vars = HashMap<String, Object>;
+
+struct Closure {
+    vars: Vars,
+    outer: Option<Rc<Closure>>,
+    global: Rc<Global>,
+}
+
+impl Closure {
+    fn var(&self, name: &str) -> Option<Object> {
+        self.vars
+            .get(name)
+            .cloned()
+            .or_else(|| self.outer.as_ref().and_then(|outer| outer.var(name)))
+    }
+
+    fn set_var(&mut self, name: String, value: Object) {
+        self.vars.insert(name, value);
+    }
 }
