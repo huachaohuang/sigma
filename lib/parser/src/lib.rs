@@ -293,7 +293,7 @@ impl<'a> Parser<'a> {
                     expr = Expr::index(expr.span.start..bracket.end, expr, index);
                 }
                 Token::Punct(Punct::Dot) => {
-                    let field = self.parse_field()?;
+                    let field = self.parse_field_name()?;
                     expr = Expr::field(expr, field);
                 }
                 _ => return Ok(expr),
@@ -307,6 +307,9 @@ impl<'a> Parser<'a> {
             Token::Str(s) => Ok(Expr::lit(span, LitKind::Str(s))),
             Token::Int(s, radix) => Ok(Expr::lit(span, LitKind::Int(s, radix))),
             Token::Float(s) => Ok(Expr::lit(span, LitKind::Float(s))),
+            Token::Ident(NULL) => Ok(Expr::lit(span, LitKind::Null)),
+            Token::Ident(TRUE) => Ok(Expr::lit(span, LitKind::Bool(true))),
+            Token::Ident(FALSE) => Ok(Expr::lit(span, LitKind::Bool(false))),
             Token::Ident(name) => Ok(Expr::name(span, name)),
             Token::Punct(Punct::LParen) => self.parse_paren_expr(span.start),
             Token::Punct(Punct::LBrace) => self.parse_brace_expr(span.start),
@@ -321,7 +324,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(start..span.end, expr.kind))
     }
 
-    fn parse_field(&mut self) -> Result<Field<'a>> {
+    fn parse_field_name(&mut self) -> Result<Field<'a>> {
         let (span, token) = self.take()?;
         let name = match token {
             Token::Str(s) => s,
@@ -332,10 +335,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_field_pair(&mut self) -> Result<(Field<'a>, Expr<'a>)> {
-        let field = self.parse_field()?;
+        let name = self.parse_field_name()?;
         self.expect_punct(Punct::Colon)?;
-        let value = self.parse_expr()?;
-        Ok((field, value))
+        let expr = self.parse_expr()?;
+        Ok((name, expr))
     }
 
     fn parse_brace_expr(&mut self, start: usize) -> Result<Expr<'a>> {

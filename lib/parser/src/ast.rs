@@ -40,8 +40,8 @@ impl<'a> Expr<'a> {
         Self::new(span, ExprKind::List(list))
     }
 
-    pub(crate) fn hash(span: Span, list: Vec<(Field<'a>, Expr<'a>)>) -> Self {
-        Self::new(span, ExprKind::Hash(list))
+    pub(crate) fn hash(span: Span, hash: Vec<(Field<'a>, Expr<'a>)>) -> Self {
+        Self::new(span, ExprKind::Hash(hash))
     }
 
     pub(crate) fn call(span: Span, expr: Expr<'a>, args: Vec<Expr<'a>>) -> Self {
@@ -113,6 +113,8 @@ pub struct Lit<'a> {
 
 #[derive(Clone, Debug)]
 pub enum LitKind<'a> {
+    Null,
+    Bool(bool),
     Str(&'a str),
     Int(&'a str, Radix),
     Float(&'a str),

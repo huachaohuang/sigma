@@ -7,4 +7,7 @@ macro_rules! keywords {
 keywords!(
     IN => "in",
     NOT => "not",
+    NULL => "null",
+    TRUE => "true",
+    FALSE => "false",
 );

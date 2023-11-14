@@ -186,11 +186,19 @@ dependencies = [
  "anyhow",
  "rustyline",
  "sigma-parser",
+ "sigma-runtime",
 ]
 
 [[package]]
 name = "sigma-parser"
 version = "0.1.0"
+
+[[package]]
+name = "sigma-runtime"
+version = "0.1.0"
+dependencies = [
+ "sigma-parser",
+]
 
 [[package]]
 name = "smallvec"

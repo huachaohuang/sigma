@@ -2,9 +2,12 @@ use anyhow::Result;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use sigma_parser::Parser;
+use sigma_runtime::Runtime;
 
 #[derive(Default)]
-pub struct Shell;
+pub struct Shell {
+    rt: Runtime,
+}
 
 impl Shell {
     pub fn run(self) -> Result<()> {
@@ -26,7 +29,16 @@ impl Shell {
     fn exec(&self, line: &str) {
         let parser = Parser::new(line);
         for stmt in parser {
-            println!("{stmt:?}");
+            match stmt {
+                Ok(stmt) => {
+                    println!("{stmt:?}");
+                    let output = self.rt.exec(&stmt);
+                    println!("{output:?}");
+                }
+                Err(err) => {
+                    eprintln!("{err:?}");
+                }
+            }
         }
     }
 }
