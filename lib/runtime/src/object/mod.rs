@@ -29,6 +29,10 @@ impl Object {
     pub(crate) fn binop(&self, op: BinOp, value: &Object) -> Result<Object> {
         todo!()
     }
+
+    pub(crate) fn cmpop(&self, op: CmpOp, value: &Object) -> Result<Object> {
+        todo!()
+    }
 }
 
 impl From<&str> for Object {

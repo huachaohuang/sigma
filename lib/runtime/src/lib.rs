@@ -11,19 +11,15 @@ mod object;
 pub use object::Object;
 
 pub struct Runtime {
-    global: Rc<Global>,
+    builtin: Builtin,
     closure: Rc<RefCell<Closure>>,
 }
 
 impl Runtime {
-    pub fn new() -> Self {
-        let global = Rc::new(Global::new());
-        let closure = Rc::new(RefCell::new(Closure {
-            vars: Vars::new(),
-            outer: None,
-            global: global.clone(),
-        }));
-        Self { global, closure }
+    fn new() -> Self {
+        let builtin = Builtin::new();
+        let closure = Rc::new(RefCell::default());
+        Self { builtin, closure }
     }
 
     fn var(&self, name: &str) -> Option<Object> {
@@ -33,9 +29,13 @@ impl Runtime {
     fn set_var(&self, name: impl ToString, value: Object) {
         self.closure.borrow_mut().set_var(name.to_string(), value);
     }
+}
 
+impl Runtime {
     pub fn exec(&self, stmt: &Stmt) -> Result<Option<Object>> {
-        todo!()
+        match &stmt.kind {
+            StmtKind::Expr(expr) => self.eval(expr).map(Some),
+        }
     }
 
     fn eval(&self, expr: &Expr) -> Result<Object> {
@@ -58,9 +58,9 @@ impl Runtime {
 
     fn eval_lit(&self, lit: &Lit) -> Result<Object> {
         match lit.kind {
-            LitKind::Null => Ok(self.global.null.clone()),
-            LitKind::Bool(true) => Ok(self.global.true_.clone()),
-            LitKind::Bool(false) => Ok(self.global.false_.clone()),
+            LitKind::Null => Ok(self.builtin.null.clone()),
+            LitKind::Bool(true) => Ok(self.builtin.true_.clone()),
+            LitKind::Bool(false) => Ok(self.builtin.false_.clone()),
             LitKind::Str(s) => Ok(s.into()),
             LitKind::Int(s, radix) => i64::from_str_radix(s, radix as u32)
                 .map(Into::into)
@@ -120,7 +120,7 @@ impl Runtime {
     fn eval_cmpop(&self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let this = self.eval(lhs)?;
         let other = self.eval(rhs)?;
-        todo!()
+        this.cmpop(op.kind, &other)
     }
 
     fn eval_boolop(&self, op: &Spanned<BoolOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
@@ -185,13 +185,19 @@ impl Runtime {
     }
 }
 
-struct Global {
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+struct Builtin {
     null: Object,
     true_: Object,
     false_: Object,
 }
 
-impl Global {
+impl Builtin {
     fn new() -> Self {
         todo!()
     }
@@ -199,10 +205,10 @@ impl Global {
 
 type Vars = HashMap<String, Object>;
 
+#[derive(Default)]
 struct Closure {
     vars: Vars,
     outer: Option<Rc<Closure>>,
-    global: Rc<Global>,
 }
 
 impl Closure {
