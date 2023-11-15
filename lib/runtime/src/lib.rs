@@ -199,7 +199,11 @@ struct Builtin {
 
 impl Builtin {
     fn new() -> Self {
-        todo!()
+        Self {
+            null: ().into(),
+            true_: true.into(),
+            false_: false.into(),
+        }
     }
 }
 

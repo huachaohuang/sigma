@@ -32,8 +32,11 @@ impl Shell {
             match stmt {
                 Ok(stmt) => {
                     println!("{stmt:?}");
-                    let output = self.rt.exec(&stmt);
-                    println!("{output:?}");
+                    match self.rt.exec(&stmt) {
+                        Ok(Some(x)) => println!("{x}"),
+                        Ok(_) => {}
+                        Err(err) => eprintln!("{err:?}"),
+                    }
                 }
                 Err(err) => {
                     eprintln!("{err:?}");
