@@ -4,7 +4,7 @@ use super::*;
 
 impl From<bool> for Object {
     fn from(value: bool) -> Self {
-        RawObject::new(BOOL_TYPE.with(Clone::clone), value).into()
+        Object(RawObject::new(BOOL_TYPE.with(|t| t.clone()), value))
     }
 }
 
@@ -15,13 +15,17 @@ thread_local! {
 
     static BOOL_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
         rc: 1,
-        ty: TYPE_TYPE.with(|x| x.clone()),
+        ty: RawObject::uninit(),
         data: TypeData {
             name: "bool".into(),
-            fmt: |this, f| {
-                let data = unsafe { this.0.data::<bool>() };
+            format: |this, f| {
+                let data = unsafe { this.0.cast_data::<bool>() };
                 write!(f, "{}", data)
             },
         },
     });
+}
+
+pub(super) fn init() {
+    BOOL_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = BOOL_TYPE.with(|t| t.clone()) });
 }

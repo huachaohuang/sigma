@@ -17,6 +17,7 @@ pub struct Runtime {
 
 impl Runtime {
     fn new() -> Self {
+        object::init();
         let builtin = Builtin::new();
         let closure = Rc::new(RefCell::default());
         Self { builtin, closure }
@@ -59,8 +60,8 @@ impl Runtime {
     fn eval_lit(&self, lit: &Lit) -> Result<Object> {
         match lit.kind {
             LitKind::Null => Ok(self.builtin.null.clone()),
-            LitKind::Bool(true) => Ok(self.builtin.true_.clone()),
-            LitKind::Bool(false) => Ok(self.builtin.false_.clone()),
+            LitKind::Bool(true) => Ok(self.builtin.null.clone()),
+            LitKind::Bool(false) => Ok(self.builtin.null.clone()),
             LitKind::Str(s) => Ok(s.into()),
             LitKind::Int(s, radix) => i64::from_str_radix(s, radix as u32)
                 .map(Into::into)
@@ -193,17 +194,11 @@ impl Default for Runtime {
 
 struct Builtin {
     null: Object,
-    true_: Object,
-    false_: Object,
 }
 
 impl Builtin {
     fn new() -> Self {
-        Self {
-            null: ().into(),
-            true_: true.into(),
-            false_: false.into(),
-        }
+        Self { null: ().into() }
     }
 }
 

@@ -4,7 +4,7 @@ use super::*;
 
 impl From<()> for Object {
     fn from(_: ()) -> Self {
-        NULL_TYPE.with(|x| x.clone()).into()
+        Object(RawObject::new(NULL_TYPE.with(|t| t.clone()), ()))
     }
 }
 
@@ -15,10 +15,14 @@ thread_local! {
 
     static NULL_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
         rc: 1,
-        ty: NULL_TYPE.with(|x| x.clone()),
+        ty: RawObject::uninit(),
         data: TypeData {
             name: "null".into(),
-            fmt: |_, f| write!(f, "null"),
+            format: |_, f| write!(f, "null"),
         }
     });
+}
+
+pub(super) fn init() {
+    NULL_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = NULL_TYPE.with(|t| t.clone()) });
 }

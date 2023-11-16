@@ -1,4 +1,4 @@
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -42,12 +42,6 @@ impl Object {
     }
 }
 
-impl<T> From<RawObject<T>> for Object {
-    fn from(raw: RawObject<T>) -> Self {
-        Self(raw.cast())
-    }
-}
-
 impl From<&str> for Object {
     fn from(_: &str) -> Self {
         todo!()
@@ -78,36 +72,65 @@ impl From<Vec<(String, Object)>> for Object {
     }
 }
 
+impl Drop for Object {
+    fn drop(&mut self) {
+        self.0.unref();
+    }
+}
+
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        (unsafe { self.0.type_data() }.format)(self, f)
     }
 }
 
 struct RawObject<T>(NonNull<Inner<T>>);
 
 impl<T> RawObject<T> {
-    fn new(ty: RawObject<TypeData>, data: T) -> Self {
+    fn new<U>(ty: RawObject<TypeData>, data: U) -> Self {
         let inner = Box::new(Inner { rc: 1, ty, data });
-        Self(NonNull::from(Box::leak(inner)))
+        Self(NonNull::from(Box::leak(inner)).cast())
     }
 
-    fn cast<U>(self) -> RawObject<U> {
-        RawObject(self.cast_inner())
+    fn uninit() -> Self {
+        Self(NonNull::dangling())
     }
 
-    fn cast_inner<U>(&self) -> NonNull<Inner<U>> {
-        self.0.cast()
+    fn unref(&self) {
+        let inner = unsafe { self.as_mut() };
+        println!("drop {:?} rc {}", self.0, inner.rc);
+        inner.rc -= 1;
+        if inner.rc == 0 {
+            drop(unsafe { Box::from_raw(self.0.as_ptr()) });
+        }
     }
 
-    unsafe fn data<U>(&self) -> &U {
-        &self.cast_inner::<U>().as_ref().data
+    unsafe fn as_ref(&self) -> &Inner<T> {
+        self.0.as_ref()
+    }
+
+    unsafe fn as_mut(&self) -> &mut Inner<T> {
+        &mut *self.0.as_ptr()
+    }
+
+    unsafe fn cast_ref<U>(&self) -> &Inner<U> {
+        self.0.cast().as_ref()
+    }
+
+    unsafe fn cast_data<U>(&self) -> &U {
+        &self.cast_ref::<U>().data
+    }
+
+    unsafe fn type_data(&self) -> &TypeData {
+        &self.as_ref().ty.as_ref().data
     }
 }
 
 impl<T> Clone for RawObject<T> {
     fn clone(&self) -> Self {
-        todo!()
+        let inner = unsafe { self.as_mut() };
+        inner.rc += 1;
+        Self(self.0)
     }
 }
 
@@ -121,22 +144,35 @@ struct Inner<T> {
 struct TypeData {
     name: String,
 
-    fmt: FmtFn,
+    format: FormatFn,
 }
 
 thread_local! {
+    static INIT: Cell<bool> = Cell::new(false);
+
     static TYPE_TYPE: RawObject<TypeData> = RawObject(unsafe {
         NonNull::new_unchecked(TYPE_TYPE_DATA.with(|x| x.get()))
     });
 
     static TYPE_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
         rc: 1,
-        ty: TYPE_TYPE.with(|x| x.clone()),
+        ty: RawObject::uninit(),
         data: TypeData {
             name: "type".into(),
-            fmt: |_, f| write!(f, "type"),
+            format: |this, f| {
+                let data = unsafe { this.0.cast_data::<TypeData>() };
+                write!(f, "{}", data.name)
+            }
         }
     });
 }
 
-type FmtFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;
+pub(crate) fn init() {
+    if !INIT.replace(true) {
+        TYPE_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = TYPE_TYPE.with(|t| t.clone()) });
+        bool::init();
+        null::init();
+    }
+}
+
+type FormatFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;
