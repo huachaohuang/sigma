@@ -2,30 +2,30 @@ use crate::Span;
 
 #[derive(Clone, Debug)]
 pub struct Error {
-    pub span: Span,
     pub kind: ErrorKind,
+    pub span: Span,
     pub message: String,
 }
 
 impl Error {
-    pub(crate) fn new(span: Span, kind: ErrorKind, message: impl ToString) -> Self {
+    pub(crate) fn new(kind: ErrorKind, span: Span, message: impl ToString) -> Self {
         Self {
-            span,
             kind,
+            span,
             message: message.to_string(),
         }
     }
 
     pub(crate) fn incomplete(span: Span, message: impl ToString) -> Self {
-        Self::new(span, ErrorKind::Incomplete, message)
+        Self::new(ErrorKind::Incomplete, span, message)
     }
 
     pub(crate) fn invalid_token(span: Span, message: impl ToString) -> Self {
-        Self::new(span, ErrorKind::InvalidToken, message)
+        Self::new(ErrorKind::InvalidToken, span, message)
     }
 
     pub(crate) fn unexpected_token(span: Span, message: impl ToString) -> Self {
-        Self::new(span, ErrorKind::UnexpectedToken, message)
+        Self::new(ErrorKind::UnexpectedToken, span, message)
     }
 }
 

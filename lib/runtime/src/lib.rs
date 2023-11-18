@@ -35,13 +35,12 @@ impl Runtime {
 impl Runtime {
     pub fn exec(&self, stmt: &Stmt) -> Result<Option<Object>> {
         match &stmt.kind {
-            StmtKind::Expr(expr) => return self.eval(expr).map(Some),
-            StmtKind::Import(name) => self.import(name)?,
+            StmtKind::Expr(expr) => self.eval(expr).map(Some),
+            StmtKind::Import(name) => self.exec_import(name).map(|_| None),
         }
-        Ok(None)
     }
 
-    fn import(&self, ident: &Ident) -> Result<()> {
+    fn exec_import(&self, ident: &Ident) -> Result<()> {
         if let Some(module) = self.builtin.modules.get(ident.name).cloned() {
             self.set_var(ident.name, module);
             Ok(())
@@ -69,7 +68,9 @@ impl Runtime {
             ExprKind::CompoundAssign(op, lhs, rhs) => self.eval_compound_assign(op, lhs, rhs),
         }
         .map_err(|mut e| {
-            e.span.get_or_insert_with(|| expr.span.clone());
+            if e.span.is_empty() {
+                e.span = expr.span.clone();
+            }
             e
         })
     }

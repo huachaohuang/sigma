@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use sigma_parser::Parser;
+use sigma_parser::{Parser, Span};
 use sigma_runtime::Runtime;
 
 #[derive(Default)]
@@ -35,14 +35,28 @@ impl Shell {
                     match self.rt.exec(&stmt) {
                         Ok(Some(x)) => println!("{x}"),
                         Ok(_) => {}
-                        Err(err) => eprintln!("{err:?}"),
+                        Err(err) => print_error(line, err.span, err.message),
                     }
                 }
                 Err(err) => {
-                    eprintln!("{err:?}");
+                    print_error(line, err.span, err.message);
                     break;
                 }
             }
         }
     }
+}
+
+fn print_error(src: &str, span: Span, message: impl ToString) {
+    use ariadne::{Color, Label, Report, ReportKind, Source};
+    let file = "<stdin>";
+    Report::build(ReportKind::Error, file, 0)
+        .with_label(
+            Label::new((file, span))
+                .with_color(Color::Red)
+                .with_message(message),
+        )
+        .finish()
+        .eprint((file, Source::from(src)))
+        .unwrap();
 }

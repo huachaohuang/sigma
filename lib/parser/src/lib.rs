@@ -40,12 +40,7 @@ impl<'a> Parser<'a> {
     fn take(&mut self) -> Result<(Span, Token<'a>)> {
         match self.saved.take() {
             Some(x) => Ok(x),
-            // None => self.lexer.next(),
-            None => {
-                let x = self.lexer.next();
-                println!("{x:?}");
-                x
-            }
+            None => self.lexer.next(),
         }
     }
 

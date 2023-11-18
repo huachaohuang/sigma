@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+ariadne = "0.3.0"
 rustyline = "12.0.0"
 sigma-parser.workspace = true
 sigma-runtime.workspace = true
