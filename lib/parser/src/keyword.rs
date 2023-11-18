@@ -10,4 +10,12 @@ keywords!(
     NULL => "null",
     TRUE => "true",
     FALSE => "false",
+    IMPORT => "import",
 );
+
+pub(crate) fn is_keyword(s: &str) -> bool {
+    match s {
+        IN | NOT | NULL | TRUE | FALSE | IMPORT => true,
+        _ => false,
+    }
+}

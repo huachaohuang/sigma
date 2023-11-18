@@ -90,13 +90,23 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     fn parse_stmt(&mut self, span: Span, token: Token<'a>) -> Result<Stmt<'a>> {
-        self.save(span, token);
-        self.parse_expr_stmt()
+        match token {
+            Token::Ident(IMPORT) => self.parse_import_stmt(span.start),
+            _ => {
+                self.save(span, token);
+                self.parse_expr_stmt()
+            }
+        }
     }
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt<'a>> {
         let expr = self.parse_expr()?;
         Ok(Stmt::new(expr.span.clone(), StmtKind::Expr(expr)))
+    }
+
+    fn parse_import_stmt(&mut self, start: usize) -> Result<Stmt<'a>> {
+        let name = self.parse_ident()?;
+        Ok(Stmt::new(start..name.span.end, StmtKind::Import(name)))
     }
 }
 
@@ -317,11 +327,25 @@ impl<'a> Parser<'a> {
             Token::Ident(NULL) => Ok(Expr::lit(span, LitKind::Null)),
             Token::Ident(TRUE) => Ok(Expr::lit(span, LitKind::Bool(true))),
             Token::Ident(FALSE) => Ok(Expr::lit(span, LitKind::Bool(false))),
+            Token::Ident(name) if is_keyword(name) => {
+                Err(token_error(span, token, format!("'{name}' is a keyword")))
+            }
             Token::Ident(name) => Ok(Expr::name(span, name)),
             Token::Punct(Punct::LParen) => self.parse_paren_expr(span.start),
             Token::Punct(Punct::LBrace) => self.parse_brace_expr(span.start),
             Token::Punct(Punct::LBracket) => self.parse_bracket_expr(span.start),
             _ => Err(token_error(span, token, "expect an expression")),
+        }
+    }
+
+    fn parse_ident(&mut self) -> Result<Ident<'a>> {
+        let (span, token) = self.take()?;
+        match token {
+            Token::Ident(name) => Ok(Ident { span, name }),
+            _ => {
+                self.save(span.clone(), token.clone());
+                Err(token_error(span, token, "expect an identifier"))
+            }
         }
     }
 

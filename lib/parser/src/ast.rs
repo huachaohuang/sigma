@@ -15,6 +15,7 @@ impl<'a> Stmt<'a> {
 #[derive(Clone, Debug)]
 pub enum StmtKind<'a> {
     Expr(Expr<'a>),
+    Import(Ident<'a>),
 }
 
 #[derive(Clone, Debug)]

@@ -40,6 +40,7 @@ impl Shell {
                 }
                 Err(err) => {
                     eprintln!("{err:?}");
+                    break;
                 }
             }
         }

@@ -2,22 +2,22 @@ use sigma_parser::Span;
 
 #[derive(Debug)]
 pub struct Error {
-    pub message: String,
     pub span: Option<Span>,
+    pub message: String,
 }
 
 impl Error {
     pub(crate) fn new(message: impl ToString) -> Self {
         Self {
-            message: message.to_string(),
             span: None,
+            message: message.to_string(),
         }
     }
 
-    pub(crate) fn with_span(message: impl ToString, span: Span) -> Self {
+    pub(crate) fn with_span(span: Span, message: impl ToString) -> Self {
         Self {
-            message: message.to_string(),
             span: Some(span),
+            message: message.to_string(),
         }
     }
 }

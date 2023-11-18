@@ -35,7 +35,21 @@ impl Runtime {
 impl Runtime {
     pub fn exec(&self, stmt: &Stmt) -> Result<Option<Object>> {
         match &stmt.kind {
-            StmtKind::Expr(expr) => self.eval(expr).map(Some),
+            StmtKind::Expr(expr) => return self.eval(expr).map(Some),
+            StmtKind::Import(name) => self.import(name)?,
+        }
+        Ok(None)
+    }
+
+    fn import(&self, ident: &Ident) -> Result<()> {
+        if let Some(module) = self.builtin.modules.get(ident.name).cloned() {
+            self.set_var(ident.name, module);
+            Ok(())
+        } else {
+            Err(Error::with_span(
+                ident.span.clone(),
+                format!("module '{}' is not defined", ident.name),
+            ))
         }
     }
 
@@ -54,6 +68,10 @@ impl Runtime {
             ExprKind::Assign(lhs, rhs) => self.eval_assign(lhs, rhs),
             ExprKind::CompoundAssign(op, lhs, rhs) => self.eval_compound_assign(op, lhs, rhs),
         }
+        .map_err(|mut e| {
+            e.span.get_or_insert_with(|| expr.span.clone());
+            e
+        })
     }
 
     fn eval_lit(&self, lit: &Lit) -> Result<Object> {
@@ -64,19 +82,16 @@ impl Runtime {
             LitKind::Str(s) => Ok(s.into()),
             LitKind::Int(s, radix) => i64::from_str_radix(s, radix as u32)
                 .map(Into::into)
-                .map_err(|e| Error::with_span(e, lit.span.clone())),
-            LitKind::Float(s) => s
-                .parse::<f64>()
-                .map(Into::into)
-                .map_err(|e| Error::with_span(e, lit.span.clone())),
+                .map_err(Error::new),
+            LitKind::Float(s) => s.parse::<f64>().map(Into::into).map_err(Error::new),
         }
     }
 
     fn eval_name(&self, ident: &Ident) -> Result<Object> {
         self.var(ident.name).ok_or_else(|| {
             Error::with_span(
-                format!("name '{}' is not defined", ident.name),
                 ident.span.clone(),
+                format!("name '{}' is not defined", ident.name),
             )
         })
     }
@@ -127,8 +142,8 @@ impl Runtime {
         let this = self.eval(lhs)?;
         let is_true = this.as_bool().ok_or_else(|| {
             Error::with_span(
-                "left-hand side should be a boolean expression",
                 lhs.span.clone(),
+                "left-hand side should be a boolean expression",
             )
         })?;
         if is_true {
@@ -163,8 +178,8 @@ impl Runtime {
                 Ok(value)
             }
             _ => Err(Error::with_span(
-                "invalid target for assignment",
                 lhs.span.clone(),
+                "invalid target for assignment",
             )),
         }
     }
@@ -194,8 +209,8 @@ impl Runtime {
                 Ok(new_value)
             }
             _ => Err(Error::with_span(
-                "invalid target for assignment",
                 lhs.span.clone(),
+                "invalid target for assignment",
             )),
         }
     }
@@ -211,6 +226,7 @@ struct Builtin {
     null: Object,
     true_: Object,
     false_: Object,
+    modules: HashMap<String, Object>,
 }
 
 impl Builtin {
@@ -219,6 +235,7 @@ impl Builtin {
             null: ().into(),
             true_: true.into(),
             false_: false.into(),
+            modules: HashMap::new(),
         }
     }
 }
