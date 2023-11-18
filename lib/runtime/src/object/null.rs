@@ -19,6 +19,7 @@ thread_local! {
         data: TypeData {
             name: "null".into(),
             format: |_, f| write!(f, "null"),
+            ..Default::default()
         }
     });
 }

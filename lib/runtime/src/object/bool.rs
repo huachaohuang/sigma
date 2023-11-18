@@ -19,9 +19,10 @@ thread_local! {
         data: TypeData {
             name: "bool".into(),
             format: |this, f| {
-                let data = unsafe { this.0.cast_data::<bool>() };
+                let data = unsafe { this.0.data::<bool>() };
                 write!(f, "{}", data)
             },
+            ..Default::default()
         },
     });
 }

@@ -18,20 +18,24 @@ use crate::{Error, Result};
 pub struct Object(RawObject<()>);
 
 impl Object {
-    pub(crate) fn index(&self, index: &Object) -> Result<Object> {
-        todo!()
+    fn type_name(&self) -> &str {
+        &self.0.type_data().name
     }
 
-    pub(crate) fn set_index(&self, index: &Object, value: Object) -> Result<()> {
-        todo!()
+    pub(crate) fn index(&self, index: &Object) -> Result<Object> {
+        (self.0.type_data().index)(self, index)
+    }
+
+    pub(crate) fn set_index(&mut self, index: &Object, value: Object) -> Result<()> {
+        (self.0.type_data().set_index)(self, index, value)
     }
 
     pub(crate) fn field(&self, field: &str) -> Result<Object> {
-        todo!()
+        (self.0.type_data().field)(self, field)
     }
 
-    pub(crate) fn set_field(&self, field: &str, value: Object) -> Result<()> {
-        todo!()
+    pub(crate) fn set_field(&mut self, field: &str, value: Object) -> Result<()> {
+        (self.0.type_data().set_field)(self, field, value)
     }
 
     pub(crate) fn unop(&self, op: UnOp) -> Result<Object> {
@@ -55,7 +59,7 @@ impl Drop for Object {
 
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (unsafe { self.0.type_data() }.format)(self, f)
+        (self.0.type_data().format)(self, f)
     }
 }
 
@@ -72,38 +76,49 @@ impl<T> RawObject<T> {
     }
 
     fn unref(&self) {
-        let inner = unsafe { self.as_mut() };
-        println!("drop {:?} rc {}", self.0, inner.rc);
+        let inner = self.as_mut();
         inner.rc -= 1;
         if inner.rc == 0 {
             drop(unsafe { Box::from_raw(self.0.as_ptr()) });
         }
     }
 
-    unsafe fn as_ref(&self) -> &Inner<T> {
-        self.0.as_ref()
+    fn as_ref(&self) -> &Inner<T> {
+        unsafe { self.0.as_ref() }
     }
 
-    unsafe fn as_mut(&self) -> &mut Inner<T> {
-        &mut *self.0.as_ptr()
+    fn as_mut(&self) -> &mut Inner<T> {
+        unsafe { &mut *self.0.as_ptr() }
     }
 
-    unsafe fn cast_ref<U>(&self) -> &Inner<U> {
+    unsafe fn cast<U>(&self) -> &Inner<U> {
         self.0.cast().as_ref()
     }
 
-    unsafe fn cast_data<U>(&self) -> &U {
-        &self.cast_ref::<U>().data
+    unsafe fn cast_mut<U>(&mut self) -> &mut Inner<U> {
+        self.0.cast().as_mut()
     }
 
-    unsafe fn type_data(&self) -> &TypeData {
+    unsafe fn data<U>(&self) -> &U {
+        &self.cast::<U>().data
+    }
+
+    unsafe fn data_mut<U>(&mut self) -> &mut U {
+        &mut self.cast_mut::<U>().data
+    }
+
+    fn is_type(&self, ty: &RawObject<TypeData>) -> bool {
+        self.as_ref().ty.0 == ty.0
+    }
+
+    fn type_data(&self) -> &TypeData {
         &self.as_ref().ty.as_ref().data
     }
 }
 
 impl<T> Clone for RawObject<T> {
     fn clone(&self) -> Self {
-        let inner = unsafe { self.as_mut() };
+        let inner = self.as_mut();
         inner.rc += 1;
         Self(self.0)
     }
@@ -119,10 +134,47 @@ struct Inner<T> {
 struct TypeData {
     name: String,
 
-    format: FormatFn,
+    format: fn(&Object, &mut fmt::Formatter) -> fmt::Result,
+
+    index: fn(&Object, &Object) -> Result<Object>,
+    set_index: fn(&mut Object, &Object, Object) -> Result<()>,
+
+    field: fn(&Object, &str) -> Result<Object>,
+    set_field: fn(&mut Object, &str, Object) -> Result<()>,
 }
 
-type FormatFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;
+impl Default for TypeData {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            format: |_, f| f.write_str(""),
+            index: |this, _| {
+                Err(Error::new(format!(
+                    "'{}' object doesn't support index access",
+                    this.type_name()
+                )))
+            },
+            set_index: |this, _, _| {
+                Err(Error::new(format!(
+                    "'{}' object doesn't support index access",
+                    this.type_name()
+                )))
+            },
+            field: |this, _| {
+                Err(Error::new(format!(
+                    "'{}' object doesn't support field access",
+                    this.type_name()
+                )))
+            },
+            set_field: |this, _, _| {
+                Err(Error::new(format!(
+                    "'{}' object doesn't support field access",
+                    this.type_name()
+                )))
+            },
+        }
+    }
+}
 
 thread_local! {
     static INIT: Cell<bool> = Cell::new(false);
@@ -137,9 +189,10 @@ thread_local! {
         data: TypeData {
             name: "type".into(),
             format: |this, f| {
-                let data = unsafe { this.0.cast_data::<TypeData>() };
+                let data = unsafe { this.0.data::<TypeData>() };
                 write!(f, "{}", data.name)
-            }
+            },
+            ..Default::default()
         }
     });
 }

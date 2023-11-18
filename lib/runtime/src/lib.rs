@@ -64,19 +64,19 @@ impl Runtime {
             LitKind::Str(s) => Ok(s.into()),
             LitKind::Int(s, radix) => i64::from_str_radix(s, radix as u32)
                 .map(Into::into)
-                .map_err(|e| Error::new(lit.span.clone(), e)),
+                .map_err(|e| Error::with_span(e, lit.span.clone())),
             LitKind::Float(s) => s
                 .parse::<f64>()
                 .map(Into::into)
-                .map_err(|e| Error::new(lit.span.clone(), e)),
+                .map_err(|e| Error::with_span(e, lit.span.clone())),
         }
     }
 
     fn eval_name(&self, ident: &Ident) -> Result<Object> {
         self.var(ident.name).ok_or_else(|| {
-            Error::new(
-                ident.span.clone(),
+            Error::with_span(
                 format!("name '{}' is not defined", ident.name),
+                ident.span.clone(),
             )
         })
     }
@@ -136,19 +136,19 @@ impl Runtime {
                 Ok(value)
             }
             ExprKind::Index(expr, index) => {
-                let this = self.eval(expr)?;
+                let mut this = self.eval(expr)?;
                 let index = self.eval(index)?;
                 this.set_index(&index, value.clone())?;
                 Ok(value)
             }
             ExprKind::Field(expr, field) => {
-                let this = self.eval(expr)?;
+                let mut this = self.eval(expr)?;
                 this.set_field(field.name, value.clone())?;
                 Ok(value)
             }
-            _ => Err(Error::new(
-                lhs.span.clone(),
+            _ => Err(Error::with_span(
                 "invalid target for assignment",
+                lhs.span.clone(),
             )),
         }
     }
@@ -163,7 +163,7 @@ impl Runtime {
                 Ok(new_value)
             }
             ExprKind::Index(expr, index) => {
-                let this = self.eval(expr)?;
+                let mut this = self.eval(expr)?;
                 let index = self.eval(index)?;
                 let old_value = this.index(&index)?;
                 let new_value = old_value.binop(op.kind, &value)?;
@@ -171,15 +171,15 @@ impl Runtime {
                 Ok(new_value)
             }
             ExprKind::Field(expr, field) => {
-                let this = self.eval(expr)?;
+                let mut this = self.eval(expr)?;
                 let old_value = this.field(field.name)?;
                 let new_value = old_value.binop(op.kind, &value)?;
                 this.set_field(field.name, new_value.clone())?;
                 Ok(new_value)
             }
-            _ => Err(Error::new(
-                lhs.span.clone(),
+            _ => Err(Error::with_span(
                 "invalid target for assignment",
+                lhs.span.clone(),
             )),
         }
     }

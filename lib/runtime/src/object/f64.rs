@@ -19,9 +19,10 @@ thread_local! {
         data: TypeData {
             name: "f64".into(),
             format: |this, f| {
-                let data = unsafe { this.0.cast_data::<f64>() };
+                let data = unsafe { this.0.data::<f64>() };
                 write!(f, "{}", data)
             },
+            ..Default::default()
         },
     });
 }

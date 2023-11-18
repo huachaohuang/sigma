@@ -25,9 +25,10 @@ thread_local! {
         data: TypeData {
             name: "str".into(),
             format: |this, f| {
-                let data = unsafe { this.0.cast_data::<String>() };
+                let data = unsafe { this.0.data::<String>() };
                 write!(f, "\"{}\"", data)
             },
+            ..Default::default()
         },
     });
 }

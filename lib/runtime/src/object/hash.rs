@@ -28,12 +28,15 @@ thread_local! {
         data: TypeData {
             name: "hash".into(),
             format,
+            field,
+            set_field,
+            ..Default::default()
         },
     });
 }
 
 fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
-    let data = unsafe { this.0.cast_data::<Hash>() };
+    let data = unsafe { this.0.data::<Hash>() };
     f.write_str("{")?;
     for (i, (k, v)) in data.iter().enumerate() {
         if i > 0 {
@@ -42,4 +45,17 @@ fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", k, v)?;
     }
     f.write_str("}")
+}
+
+fn field(this: &Object, field: &str) -> Result<Object> {
+    let data = unsafe { this.0.data::<Hash>() };
+    data.get(field)
+        .cloned()
+        .ok_or_else(|| Error::new(format!("field '{field}' is not found")))
+}
+
+fn set_field(this: &mut Object, field: &str, value: Object) -> Result<()> {
+    let data = unsafe { this.0.data_mut::<Hash>() };
+    data.insert(field.into(), value);
+    Ok(())
 }
