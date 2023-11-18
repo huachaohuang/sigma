@@ -1,4 +1,5 @@
 use std::cell::{Cell, UnsafeCell};
+use std::cmp::Ordering;
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -39,15 +40,49 @@ impl Object {
     }
 
     pub(crate) fn unop(&self, op: UnOp) -> Result<Object> {
-        todo!()
+        let arithmetic = &self.0.type_data().arithmetic;
+        match op {
+            UnOp::Not => (arithmetic.not)(self),
+            UnOp::Neg => (arithmetic.neg)(self),
+        }
     }
 
-    pub(crate) fn binop(&self, op: BinOp, value: &Object) -> Result<Object> {
-        todo!()
+    pub(crate) fn binop(&self, op: BinOp, other: &Object) -> Result<Object> {
+        let arithmetic = &self.0.type_data().arithmetic;
+        match op {
+            BinOp::Or => (arithmetic.or)(self, other),
+            BinOp::Xor => (arithmetic.xor)(self, other),
+            BinOp::And => (arithmetic.and)(self, other),
+            BinOp::Shl => (arithmetic.shl)(self, other),
+            BinOp::Shr => (arithmetic.shr)(self, other),
+            BinOp::Add => (arithmetic.add)(self, other),
+            BinOp::Sub => (arithmetic.sub)(self, other),
+            BinOp::Mul => (arithmetic.mul)(self, other),
+            BinOp::Div => (arithmetic.div)(self, other),
+            BinOp::Rem => (arithmetic.rem)(self, other),
+        }
     }
 
-    pub(crate) fn cmpop(&self, op: CmpOp, value: &Object) -> Result<Object> {
-        todo!()
+    pub(crate) fn relop(&self, op: RelOp, other: &Object) -> Result<Object> {
+        let value = match op {
+            RelOp::Eq => self.compare(other)? == Ordering::Equal,
+            RelOp::Ne => self.compare(other)? != Ordering::Equal,
+            RelOp::Lt => self.compare(other)? == Ordering::Less,
+            RelOp::Le => self.compare(other)? != Ordering::Greater,
+            RelOp::Gt => self.compare(other)? == Ordering::Greater,
+            RelOp::Ge => self.compare(other)? != Ordering::Less,
+            RelOp::In => self.contains(other)?,
+            RelOp::NotIn => !self.contains(other)?,
+        };
+        Ok(value.into())
+    }
+
+    fn compare(&self, other: &Object) -> Result<Ordering> {
+        (self.0.type_data().compare)(self, other)
+    }
+
+    fn contains(&self, other: &Object) -> Result<bool> {
+        (self.0.type_data().contains)(self, other)
     }
 }
 
@@ -141,6 +176,12 @@ struct TypeData {
 
     field: fn(&Object, &str) -> Result<Object>,
     set_field: fn(&mut Object, &str, Object) -> Result<()>,
+
+    compare: fn(&Object, &Object) -> Result<Ordering>,
+
+    contains: fn(&Object, &Object) -> Result<bool>,
+
+    arithmetic: ArithmeticMethods,
 }
 
 impl Default for TypeData {
@@ -148,32 +189,57 @@ impl Default for TypeData {
         Self {
             name: String::new(),
             format: |_, f| f.write_str(""),
-            index: |this, _| {
-                Err(Error::new(format!(
-                    "'{}' object doesn't support index access",
-                    this.type_name()
-                )))
-            },
-            set_index: |this, _, _| {
-                Err(Error::new(format!(
-                    "'{}' object doesn't support index access",
-                    this.type_name()
-                )))
-            },
-            field: |this, _| {
-                Err(Error::new(format!(
-                    "'{}' object doesn't support field access",
-                    this.type_name()
-                )))
-            },
-            set_field: |this, _, _| {
-                Err(Error::new(format!(
-                    "'{}' object doesn't support field access",
-                    this.type_name()
-                )))
-            },
+            index: |this, _| Err(unsupported(this, "index access")),
+            set_index: |this, _, _| Err(unsupported(this, "index access")),
+            field: |this, _| Err(unsupported(this, "field access")),
+            set_field: |this, _, _| Err(unsupported(this, "field access")),
+            compare: |this, _| Err(unsupported(this, "comparison")),
+            contains: |this, _| Err(unsupported(this, "membership test")),
+            arithmetic: ArithmeticMethods::default(),
         }
     }
+}
+
+struct ArithmeticMethods {
+    not: fn(&Object) -> Result<Object>,
+    or: fn(&Object, &Object) -> Result<Object>,
+    xor: fn(&Object, &Object) -> Result<Object>,
+    and: fn(&Object, &Object) -> Result<Object>,
+    shl: fn(&Object, &Object) -> Result<Object>,
+    shr: fn(&Object, &Object) -> Result<Object>,
+    neg: fn(&Object) -> Result<Object>,
+    add: fn(&Object, &Object) -> Result<Object>,
+    sub: fn(&Object, &Object) -> Result<Object>,
+    mul: fn(&Object, &Object) -> Result<Object>,
+    div: fn(&Object, &Object) -> Result<Object>,
+    rem: fn(&Object, &Object) -> Result<Object>,
+}
+
+impl Default for ArithmeticMethods {
+    fn default() -> Self {
+        Self {
+            not: |this| Err(unsupported(this, "!")),
+            or: |this, _| Err(unsupported(this, "|")),
+            xor: |this, _| Err(unsupported(this, "^")),
+            and: |this, _| Err(unsupported(this, "&")),
+            shl: |this, _| Err(unsupported(this, "<<")),
+            shr: |this, _| Err(unsupported(this, ">>")),
+            neg: |this| Err(unsupported(this, "-")),
+            add: |this, _| Err(unsupported(this, "+")),
+            sub: |this, _| Err(unsupported(this, "-")),
+            mul: |this, _| Err(unsupported(this, "*")),
+            div: |this, _| Err(unsupported(this, "/")),
+            rem: |this, _| Err(unsupported(this, "%")),
+        }
+    }
+}
+
+fn unsupported(this: &Object, op: &str) -> Error {
+    Error::new(format!(
+        "'{}' object doesn't support {} operation",
+        this.type_name(),
+        op
+    ))
 }
 
 thread_local! {

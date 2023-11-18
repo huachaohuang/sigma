@@ -2,6 +2,16 @@ use std::cell::UnsafeCell;
 
 use super::*;
 
+impl Object {
+    pub(crate) fn as_str(&self) -> Option<&str> {
+        if TYPE.with(|t| self.0.is_type(t)) {
+            Some(unsafe { self.0.data::<String>() })
+        } else {
+            None
+        }
+    }
+}
+
 impl From<&str> for Object {
     fn from(value: &str) -> Self {
         value.to_owned().into()

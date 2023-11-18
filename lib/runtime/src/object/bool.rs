@@ -2,6 +2,16 @@ use std::cell::UnsafeCell;
 
 use super::*;
 
+impl Object {
+    pub(crate) fn as_bool(&self) -> Option<bool> {
+        if TYPE.with(|t| self.0.is_type(t)) {
+            Some(unsafe { *self.0.data::<bool>() })
+        } else {
+            None
+        }
+    }
+}
+
 impl From<bool> for Object {
     fn from(value: bool) -> Self {
         Self(RawObject::new(TYPE.with(|t| t.clone()), value))

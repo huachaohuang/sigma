@@ -147,19 +147,19 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn parse_cmp_op(&mut self) -> Result<Option<Spanned<CmpOp>>> {
+    fn parse_cmp_op(&mut self) -> Result<Option<Spanned<RelOp>>> {
         let (span, token) = self.take()?;
         let op = match token {
-            Token::Punct(Punct::EqEq) => CmpOp::Eq,
-            Token::Punct(Punct::NotEq) => CmpOp::Ne,
-            Token::Punct(Punct::LAngle) => CmpOp::Lt,
-            Token::Punct(Punct::LAngleEq) => CmpOp::Le,
-            Token::Punct(Punct::RAngle) => CmpOp::Gt,
-            Token::Punct(Punct::RAngleEq) => CmpOp::Ge,
-            Token::Ident(IN) => CmpOp::In,
+            Token::Punct(Punct::EqEq) => RelOp::Eq,
+            Token::Punct(Punct::NotEq) => RelOp::Ne,
+            Token::Punct(Punct::LAngle) => RelOp::Lt,
+            Token::Punct(Punct::LAngleEq) => RelOp::Le,
+            Token::Punct(Punct::RAngle) => RelOp::Gt,
+            Token::Punct(Punct::RAngleEq) => RelOp::Ge,
+            Token::Ident(IN) => RelOp::In,
             Token::Ident(NOT) => {
                 self.expect_kw(IN)?;
-                CmpOp::NotIn
+                RelOp::NotIn
             }
             _ => {
                 self.save(span, token);
@@ -173,7 +173,7 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_or_expr()?;
         while let Some(op) = self.parse_cmp_op()? {
             let rhs = self.parse_or_expr()?;
-            lhs = Expr::cmpop(op, lhs, rhs);
+            lhs = Expr::relop(op, lhs, rhs);
         }
         Ok(lhs)
     }

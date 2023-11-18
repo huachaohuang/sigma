@@ -23,6 +23,7 @@ thread_local! {
             format,
             index,
             set_index,
+            contains,
             ..Default::default()
         },
     });
@@ -68,4 +69,14 @@ fn len_index<'a>(len: usize, index: &Object) -> Result<usize> {
         }
         None => Err(Error::new("index must be an integer")),
     }
+}
+
+fn contains(this: &Object, other: &Object) -> Result<bool> {
+    let list = unsafe { this.0.data::<List>() };
+    for item in list {
+        if item.compare(other)? == Ordering::Equal {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

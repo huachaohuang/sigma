@@ -49,7 +49,7 @@ impl Runtime {
             ExprKind::Field(expr, field) => self.eval_field(expr, field),
             ExprKind::UnOp(op, expr) => self.eval_unop(op, expr),
             ExprKind::BinOp(op, lhs, rhs) => self.eval_binop(op, lhs, rhs),
-            ExprKind::CmpOp(op, lhs, rhs) => self.eval_cmpop(op, lhs, rhs),
+            ExprKind::RelOp(op, lhs, rhs) => self.eval_relop(op, lhs, rhs),
             ExprKind::BoolOp(op, lhs, rhs) => self.eval_boolop(op, lhs, rhs),
             ExprKind::Assign(lhs, rhs) => self.eval_assign(lhs, rhs),
             ExprKind::CompoundAssign(op, lhs, rhs) => self.eval_compound_assign(op, lhs, rhs),
@@ -117,15 +117,31 @@ impl Runtime {
         this.binop(op.kind, &other)
     }
 
-    fn eval_cmpop(&self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_relop(&self, op: &Spanned<RelOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let this = self.eval(lhs)?;
         let other = self.eval(rhs)?;
-        this.cmpop(op.kind, &other)
+        this.relop(op.kind, &other)
     }
 
     fn eval_boolop(&self, op: &Spanned<BoolOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
-        let lv = self.eval(lhs)?;
-        todo!()
+        let this = self.eval(lhs)?;
+        let is_true = this.as_bool().ok_or_else(|| {
+            Error::with_span(
+                "left-hand side should be a boolean expression",
+                lhs.span.clone(),
+            )
+        })?;
+        if is_true {
+            match op.kind {
+                BoolOp::Or => Ok(this),
+                BoolOp::And => self.eval(rhs),
+            }
+        } else {
+            match op.kind {
+                BoolOp::Or => self.eval(rhs),
+                BoolOp::And => Ok(this),
+            }
+        }
     }
 
     fn eval_assign(&self, lhs: &Expr, rhs: &Expr) -> Result<Object> {

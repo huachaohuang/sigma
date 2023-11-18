@@ -63,9 +63,9 @@ impl<'a> Expr<'a> {
         Self::new(span, ExprKind::BinOp(op, lhs.into(), rhs.into()))
     }
 
-    pub(crate) fn cmpop(op: Spanned<CmpOp>, lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+    pub(crate) fn relop(op: Spanned<RelOp>, lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
         let span = lhs.span.start..rhs.span.end;
-        Self::new(span, ExprKind::CmpOp(op, lhs.into(), rhs.into()))
+        Self::new(span, ExprKind::RelOp(op, lhs.into(), rhs.into()))
     }
 
     pub(crate) fn boolop(op: Spanned<BoolOp>, lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
@@ -94,7 +94,7 @@ pub enum ExprKind<'a> {
     Field(Box<Expr<'a>>, Field<'a>),
     UnOp(Spanned<UnOp>, Box<Expr<'a>>),
     BinOp(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
-    CmpOp(Spanned<CmpOp>, Box<Expr<'a>>, Box<Expr<'a>>),
+    RelOp(Spanned<RelOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     BoolOp(Spanned<BoolOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     CompoundAssign(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
@@ -160,7 +160,7 @@ pub enum BinOp {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CmpOp {
+pub enum RelOp {
     Eq,
     Ne,
     Lt,

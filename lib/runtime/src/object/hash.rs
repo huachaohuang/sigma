@@ -30,6 +30,7 @@ thread_local! {
             format,
             field,
             set_field,
+            contains,
             ..Default::default()
         },
     });
@@ -58,4 +59,12 @@ fn set_field(this: &mut Object, field: &str, value: Object) -> Result<()> {
     let data = unsafe { this.0.data_mut::<Hash>() };
     data.insert(field.into(), value);
     Ok(())
+}
+
+fn contains(this: &Object, other: &Object) -> Result<bool> {
+    let data = unsafe { this.0.data::<Hash>() };
+    Ok(other
+        .as_str()
+        .map(|x| data.contains_key(x))
+        .unwrap_or(false))
 }
