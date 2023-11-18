@@ -2,8 +2,14 @@ use std::cell::UnsafeCell;
 
 use super::*;
 
-impl From<()> for Object {
-    fn from(value: ()) -> Self {
+impl From<&str> for Object {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+impl From<String> for Object {
+    fn from(value: String) -> Self {
         Self(RawObject::new(TYPE.with(|t| t.clone()), value))
     }
 }
@@ -17,8 +23,11 @@ thread_local! {
         rc: 1,
         ty: super::TYPE_TYPE.with(|x| x.clone()),
         data: TypeData {
-            name: "null".into(),
-            format: |_, f| write!(f, "null"),
-        }
+            name: "str".into(),
+            format: |this, f| {
+                let data = unsafe { this.0.cast_data::<String>() };
+                write!(f, "{}", data)
+            },
+        },
     });
 }

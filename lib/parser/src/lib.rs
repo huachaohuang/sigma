@@ -16,11 +16,12 @@ use keyword::*;
 pub type Span = std::ops::Range<usize>;
 
 #[derive(Clone, Copy, Debug)]
+#[repr(u32)]
 pub enum Radix {
-    Bin,
-    Oct,
-    Dec,
-    Hex,
+    Bin = 2,
+    Oct = 8,
+    Dec = 10,
+    Hex = 16,
 }
 
 pub struct Parser<'a> {

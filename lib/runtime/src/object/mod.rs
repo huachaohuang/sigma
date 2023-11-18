@@ -1,12 +1,14 @@
-use std::cell::Cell;
+use std::cell::{Cell, UnsafeCell};
 use std::fmt;
 use std::ptr::NonNull;
 
 use sigma_parser::ast::*;
 
 mod bool;
+mod f64;
+mod i64;
 mod null;
-mod tyty;
+mod str;
 
 use crate::{Error, Result};
 
@@ -43,24 +45,6 @@ impl Object {
     }
 }
 
-impl From<&str> for Object {
-    fn from(_: &str) -> Self {
-        todo!()
-    }
-}
-
-impl From<i64> for Object {
-    fn from(_: i64) -> Self {
-        todo!()
-    }
-}
-
-impl From<f64> for Object {
-    fn from(_: f64) -> Self {
-        todo!()
-    }
-}
-
 impl From<Vec<Object>> for Object {
     fn from(_: Vec<Object>) -> Self {
         todo!()
@@ -91,10 +75,6 @@ impl<T> RawObject<T> {
     fn new<U>(ty: RawObject<TypeData>, data: U) -> Self {
         let inner = Box::new(Inner { rc: 1, ty, data });
         Self(NonNull::from(Box::leak(inner)).cast())
-    }
-
-    fn dangling() -> Self {
-        Self(NonNull::dangling())
     }
 
     unsafe fn from_ptr(ptr: *mut Inner<T>) -> Self {
@@ -156,12 +136,26 @@ type FormatFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;
 
 thread_local! {
     static INIT: Cell<bool> = Cell::new(false);
+
+    static TYPE_TYPE: RawObject<TypeData> = unsafe {
+        RawObject::from_ptr(TYPE_TYPE_DATA.with(|x| x.get()))
+    };
+
+    static TYPE_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
+        rc: 1,
+        ty: RawObject(NonNull::dangling()),
+        data: TypeData {
+            name: "type".into(),
+            format: |this, f| {
+                let data = unsafe { this.0.cast_data::<TypeData>() };
+                write!(f, "{}", data.name)
+            }
+        }
+    });
 }
 
 pub(crate) fn init() {
     if !INIT.replace(true) {
-        tyty::init();
-        bool::init();
-        null::init();
+        TYPE_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = TYPE_TYPE.with(|t| t.clone()) });
     }
 }

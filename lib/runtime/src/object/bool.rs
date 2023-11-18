@@ -4,18 +4,18 @@ use super::*;
 
 impl From<bool> for Object {
     fn from(value: bool) -> Self {
-        Object(RawObject::new(BOOL_TYPE.with(|t| t.clone()), value))
+        Self(RawObject::new(TYPE.with(|t| t.clone()), value))
     }
 }
 
 thread_local! {
-    static BOOL_TYPE: RawObject<TypeData> = unsafe {
-        RawObject::from_ptr(BOOL_TYPE_DATA.with(|x| x.get()))
+    static TYPE: RawObject<TypeData> = unsafe {
+        RawObject::from_ptr(TYPE_DATA.with(|x| x.get()))
     };
 
-    static BOOL_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
+    static TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
         rc: 1,
-        ty: RawObject::dangling(),
+        ty: super::TYPE_TYPE.with(|x| x.clone()),
         data: TypeData {
             name: "bool".into(),
             format: |this, f| {
@@ -24,8 +24,4 @@ thread_local! {
             },
         },
     });
-}
-
-pub(super) fn init() {
-    BOOL_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = BOOL_TYPE.with(|t| t.clone()) });
 }
