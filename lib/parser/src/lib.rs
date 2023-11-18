@@ -40,7 +40,12 @@ impl<'a> Parser<'a> {
     fn take(&mut self) -> Result<(Span, Token<'a>)> {
         match self.saved.take() {
             Some(x) => Ok(x),
-            None => self.lexer.next(),
+            // None => self.lexer.next(),
+            None => {
+                let x = self.lexer.next();
+                println!("{x:?}");
+                x
+            }
         }
     }
 
@@ -284,7 +289,7 @@ impl<'a> Parser<'a> {
     fn parse_primary_expr(&mut self) -> Result<Expr<'a>> {
         let mut expr = self.parse_atom_expr()?;
         loop {
-            let (_, token) = self.take()?;
+            let (span, token) = self.take()?;
             match token {
                 Token::Punct(Punct::LBracket) => {
                     let index = self.parse_expr()?;
@@ -295,7 +300,10 @@ impl<'a> Parser<'a> {
                     let field = self.parse_field_name()?;
                     expr = Expr::field(expr, field);
                 }
-                _ => return Ok(expr),
+                _ => {
+                    self.save(span, token);
+                    return Ok(expr);
+                }
             }
         }
     }
@@ -328,7 +336,10 @@ impl<'a> Parser<'a> {
         let name = match token {
             Token::Str(s) => s,
             Token::Ident(s) => s,
-            _ => return Err(token_error(span, token, "expect a field name")),
+            _ => {
+                self.save(span.clone(), token.clone());
+                return Err(token_error(span, token, "expect a field name"));
+            }
         };
         Ok(Field { span, name })
     }

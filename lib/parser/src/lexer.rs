@@ -184,7 +184,10 @@ impl<'a> Lexer<'a> {
 
     fn parse_ident(&mut self, start: usize) -> Result<(Span, Token<'a>)> {
         let end = match self.skip_while(is_ident_continue) {
-            Some((i, _)) => i,
+            Some((i, c)) => {
+                self.save(i, c);
+                i
+            }
             None => self.input.len(),
         };
         Ok((start..end, Token::Ident(self.slice(start..end))))

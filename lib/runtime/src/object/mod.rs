@@ -6,7 +6,9 @@ use sigma_parser::ast::*;
 
 mod bool;
 mod f64;
+mod hash;
 mod i64;
+mod list;
 mod null;
 mod str;
 
@@ -41,18 +43,6 @@ impl Object {
     }
 
     pub(crate) fn cmpop(&self, op: CmpOp, value: &Object) -> Result<Object> {
-        todo!()
-    }
-}
-
-impl From<Vec<Object>> for Object {
-    fn from(_: Vec<Object>) -> Self {
-        todo!()
-    }
-}
-
-impl From<Vec<(String, Object)>> for Object {
-    fn from(_: Vec<(String, Object)>) -> Self {
         todo!()
     }
 }

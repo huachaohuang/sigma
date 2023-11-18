@@ -26,7 +26,7 @@ thread_local! {
             name: "str".into(),
             format: |this, f| {
                 let data = unsafe { this.0.cast_data::<String>() };
-                write!(f, "{}", data)
+                write!(f, "\"{}\"", data)
             },
         },
     });
