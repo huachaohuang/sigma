@@ -71,14 +71,20 @@ impl Object {
             RelOp::Le => self.compare(other)? != Ordering::Greater,
             RelOp::Gt => self.compare(other)? == Ordering::Greater,
             RelOp::Ge => self.compare(other)? != Ordering::Less,
-            RelOp::In => self.contains(other)?,
-            RelOp::NotIn => !self.contains(other)?,
+            RelOp::In => other.contains(self)?,
+            RelOp::NotIn => !other.contains(self)?,
         };
         Ok(value.into())
     }
 
     fn compare(&self, other: &Object) -> Result<Ordering> {
-        (self.0.type_data().compare)(self, other)
+        (self.0.type_data().compare)(self, other).ok_or_else(|| {
+            Error::new(format!(
+                "'{}' cannot be compared with '{}'",
+                self.type_name(),
+                other.type_name()
+            ))
+        })
     }
 
     fn contains(&self, other: &Object) -> Result<bool> {
@@ -89,6 +95,22 @@ impl Object {
 impl Drop for Object {
     fn drop(&mut self) {
         self.0.unref();
+    }
+}
+
+impl Eq for Object {}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        self.partial_cmp(other)
+            .map(|x| x == Ordering::Equal)
+            .unwrap_or(false)
+    }
+}
+
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (self.0.type_data().compare)(self, other)
     }
 }
 
@@ -177,7 +199,7 @@ struct TypeData {
     field: fn(&Object, &str) -> Result<Object>,
     set_field: fn(&mut Object, &str, Object) -> Result<()>,
 
-    compare: fn(&Object, &Object) -> Result<Ordering>,
+    compare: fn(&Object, &Object) -> Option<Ordering>,
 
     contains: fn(&Object, &Object) -> Result<bool>,
 
@@ -193,7 +215,7 @@ impl Default for TypeData {
             set_index: |this, _, _| Err(unsupported(this, "index access")),
             field: |this, _| Err(unsupported(this, "field access")),
             set_field: |this, _, _| Err(unsupported(this, "field access")),
-            compare: |this, _| Err(unsupported(this, "comparison")),
+            compare: |_, _| None,
             contains: |this, _| Err(unsupported(this, "membership test")),
             arithmetic: ArithmeticMethods::default(),
         }
@@ -236,7 +258,7 @@ impl Default for ArithmeticMethods {
 
 fn unsupported(this: &Object, op: &str) -> Error {
     Error::new(format!(
-        "'{}' object doesn't support {} operation",
+        "'{}' doesn't support {} operation",
         this.type_name(),
         op
     ))

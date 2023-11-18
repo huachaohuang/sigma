@@ -34,11 +34,25 @@ thread_local! {
         ty: super::TYPE_TYPE.with(|x| x.clone()),
         data: TypeData {
             name: "str".into(),
-            format: |this, f| {
-                let data = unsafe { this.0.data::<String>() };
-                write!(f, "\"{}\"", data)
-            },
+            format,
+            compare,
+            contains,
             ..Default::default()
         },
     });
+}
+
+fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
+    let data = unsafe { this.0.data::<String>() };
+    write!(f, "\"{}\"", data)
+}
+
+fn compare(this: &Object, other: &Object) -> Option<Ordering> {
+    let data = unsafe { this.0.data::<String>() };
+    other.as_str().map(|x| data.as_str().cmp(x))
+}
+
+fn contains(this: &Object, other: &Object) -> Result<bool> {
+    let data = unsafe { this.0.data::<String>() };
+    Ok(other.as_str().map(|x| data.contains(x)).unwrap_or(false))
 }

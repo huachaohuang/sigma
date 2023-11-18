@@ -30,9 +30,9 @@ thread_local! {
 }
 
 fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
-    let data = unsafe { this.0.data::<List>() };
+    let list = unsafe { this.0.data::<List>() };
     f.write_str("[")?;
-    for (i, item) in data.iter().enumerate() {
+    for (i, item) in list.iter().enumerate() {
         if i > 0 {
             f.write_str(", ")?;
         }
@@ -43,17 +43,15 @@ fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
 
 fn index(this: &Object, index: &Object) -> Result<Object> {
     let list = unsafe { this.0.data::<List>() };
-    let i = len_index(list.len(), index)?;
-    Ok(unsafe { list.get_unchecked(i).clone() })
+    list_index(index, list.len()).map(|i| unsafe { list.get_unchecked(i).clone() })
 }
 
 fn set_index(this: &mut Object, index: &Object, value: Object) -> Result<()> {
     let list = unsafe { this.0.data_mut::<List>() };
-    let i = len_index(list.len(), index)?;
-    Ok(unsafe { *list.get_unchecked_mut(i) = value })
+    list_index(index, list.len()).map(|i| unsafe { *list.get_unchecked_mut(i) = value })
 }
 
-fn len_index<'a>(len: usize, index: &Object) -> Result<usize> {
+fn list_index<'a>(index: &Object, len: usize) -> Result<usize> {
     match index.as_i64() {
         Some(i) => {
             let i = if i >= 0 {
@@ -67,16 +65,14 @@ fn len_index<'a>(len: usize, index: &Object) -> Result<usize> {
                 Err(Error::new(format!("index '{i}' out of bounds")))
             }
         }
-        None => Err(Error::new("index must be an integer")),
+        None => Err(Error::new(format!(
+            "list index must be 'i64', not '{}'",
+            index.type_name()
+        ))),
     }
 }
 
 fn contains(this: &Object, other: &Object) -> Result<bool> {
     let list = unsafe { this.0.data::<List>() };
-    for item in list {
-        if item.compare(other)? == Ordering::Equal {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    Ok(list.contains(other))
 }

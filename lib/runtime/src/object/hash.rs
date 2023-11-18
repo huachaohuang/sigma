@@ -28,6 +28,8 @@ thread_local! {
         data: TypeData {
             name: "hash".into(),
             format,
+            index,
+            set_index,
             field,
             set_field,
             contains,
@@ -37,9 +39,9 @@ thread_local! {
 }
 
 fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
-    let data = unsafe { this.0.data::<Hash>() };
+    let hash = unsafe { this.0.data::<Hash>() };
     f.write_str("{")?;
-    for (i, (k, v)) in data.iter().enumerate() {
+    for (i, (k, v)) in hash.iter().enumerate() {
         if i > 0 {
             f.write_str(", ")?;
         }
@@ -48,23 +50,40 @@ fn format(this: &Object, f: &mut fmt::Formatter) -> fmt::Result {
     f.write_str("}")
 }
 
+fn index(this: &Object, index: &Object) -> Result<Object> {
+    hash_index(index).and_then(|x| field(this, x))
+}
+
+fn set_index(this: &mut Object, index: &Object, value: Object) -> Result<()> {
+    hash_index(index).and_then(|x| set_field(this, x, value))
+}
+
+fn hash_index(index: &Object) -> Result<&str> {
+    index.as_str().ok_or_else(|| {
+        Error::new(format!(
+            "hash index must be 'str', not '{}'",
+            index.type_name()
+        ))
+    })
+}
+
 fn field(this: &Object, field: &str) -> Result<Object> {
-    let data = unsafe { this.0.data::<Hash>() };
-    data.get(field)
+    let hash = unsafe { this.0.data::<Hash>() };
+    hash.get(field)
         .cloned()
         .ok_or_else(|| Error::new(format!("field '{field}' is not found")))
 }
 
 fn set_field(this: &mut Object, field: &str, value: Object) -> Result<()> {
-    let data = unsafe { this.0.data_mut::<Hash>() };
-    data.insert(field.into(), value);
+    let hash = unsafe { this.0.data_mut::<Hash>() };
+    hash.insert(field.into(), value);
     Ok(())
 }
 
 fn contains(this: &Object, other: &Object) -> Result<bool> {
-    let data = unsafe { this.0.data::<Hash>() };
+    let hash = unsafe { this.0.data::<Hash>() };
     Ok(other
         .as_str()
-        .map(|x| data.contains_key(x))
+        .map(|x| hash.contains_key(x))
         .unwrap_or(false))
 }
