@@ -271,7 +271,10 @@ impl<'a> Parser<'a> {
         let op = match token {
             Token::Punct(Punct::Not) => UnOp::Not,
             Token::Punct(Punct::Minus) => UnOp::Neg,
-            _ => return self.parse_primary_expr(),
+            _ => {
+                self.save(span, token);
+                return self.parse_primary_expr();
+            }
         };
         let expr = self.parse_unary_expr()?;
         Ok(Expr::unop(Spanned::new(span, op), expr))
@@ -282,11 +285,6 @@ impl<'a> Parser<'a> {
         loop {
             let (_, token) = self.take()?;
             match token {
-                Token::Punct(Punct::LParen) => {
-                    let (args, paren) =
-                        self.parse_terminated_list(Punct::RParen, Self::parse_expr)?;
-                    expr = Expr::call(expr.span.start..paren.end, expr, args);
-                }
                 Token::Punct(Punct::LBracket) => {
                     let index = self.parse_expr()?;
                     let bracket = self.expect_punct(Punct::RBracket)?;

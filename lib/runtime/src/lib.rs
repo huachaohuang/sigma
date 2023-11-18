@@ -53,15 +53,14 @@ impl Runtime {
             ExprKind::BoolOp(op, lhs, rhs) => self.eval_boolop(op, lhs, rhs),
             ExprKind::Assign(lhs, rhs) => self.eval_assign(lhs, rhs),
             ExprKind::CompoundAssign(op, lhs, rhs) => self.eval_compound_assign(op, lhs, rhs),
-            _ => Err(Error::new(expr.span.clone(), "unsupported expression")),
         }
     }
 
     fn eval_lit(&self, lit: &Lit) -> Result<Object> {
         match lit.kind {
             LitKind::Null => Ok(self.builtin.null.clone()),
-            LitKind::Bool(true) => Ok(self.builtin.null.clone()),
-            LitKind::Bool(false) => Ok(self.builtin.null.clone()),
+            LitKind::Bool(true) => Ok(self.builtin.true_.clone()),
+            LitKind::Bool(false) => Ok(self.builtin.false_.clone()),
             LitKind::Str(s) => Ok(s.into()),
             LitKind::Int(s, radix) => i64::from_str_radix(s, radix as u32)
                 .map(Into::into)
@@ -194,11 +193,17 @@ impl Default for Runtime {
 
 struct Builtin {
     null: Object,
+    true_: Object,
+    false_: Object,
 }
 
 impl Builtin {
     fn new() -> Self {
-        Self { null: ().into() }
+        Self {
+            null: ().into(),
+            true_: true.into(),
+            false_: false.into(),
+        }
     }
 }
 

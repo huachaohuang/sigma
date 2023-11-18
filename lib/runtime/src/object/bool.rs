@@ -9,13 +9,13 @@ impl From<bool> for Object {
 }
 
 thread_local! {
-    static BOOL_TYPE: RawObject<TypeData> = RawObject(unsafe {
-        NonNull::new_unchecked(BOOL_TYPE_DATA.with(|x| x.get()))
-    });
+    static BOOL_TYPE: RawObject<TypeData> = unsafe {
+        RawObject::from_ptr(BOOL_TYPE_DATA.with(|x| x.get()))
+    };
 
     static BOOL_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
         rc: 1,
-        ty: RawObject::uninit(),
+        ty: RawObject::dangling(),
         data: TypeData {
             name: "bool".into(),
             format: |this, f| {

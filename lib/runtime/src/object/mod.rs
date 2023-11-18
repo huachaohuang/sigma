@@ -1,4 +1,4 @@
-use std::cell::{Cell, UnsafeCell};
+use std::cell::Cell;
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -6,6 +6,7 @@ use sigma_parser::ast::*;
 
 mod bool;
 mod null;
+mod tyty;
 
 use crate::{Error, Result};
 
@@ -92,8 +93,12 @@ impl<T> RawObject<T> {
         Self(NonNull::from(Box::leak(inner)).cast())
     }
 
-    fn uninit() -> Self {
+    fn dangling() -> Self {
         Self(NonNull::dangling())
+    }
+
+    unsafe fn from_ptr(ptr: *mut Inner<T>) -> Self {
+        Self(NonNull::new_unchecked(ptr))
     }
 
     fn unref(&self) {
@@ -147,32 +152,16 @@ struct TypeData {
     format: FormatFn,
 }
 
+type FormatFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;
+
 thread_local! {
     static INIT: Cell<bool> = Cell::new(false);
-
-    static TYPE_TYPE: RawObject<TypeData> = RawObject(unsafe {
-        NonNull::new_unchecked(TYPE_TYPE_DATA.with(|x| x.get()))
-    });
-
-    static TYPE_TYPE_DATA: UnsafeCell<Inner<TypeData>> = UnsafeCell::new(Inner {
-        rc: 1,
-        ty: RawObject::uninit(),
-        data: TypeData {
-            name: "type".into(),
-            format: |this, f| {
-                let data = unsafe { this.0.cast_data::<TypeData>() };
-                write!(f, "{}", data.name)
-            }
-        }
-    });
 }
 
 pub(crate) fn init() {
     if !INIT.replace(true) {
-        TYPE_TYPE_DATA.with(|x| unsafe { (*x.get()).ty = TYPE_TYPE.with(|t| t.clone()) });
+        tyty::init();
         bool::init();
         null::init();
     }
 }
-
-type FormatFn = fn(&Object, &mut fmt::Formatter) -> fmt::Result;

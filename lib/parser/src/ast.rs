@@ -44,10 +44,6 @@ impl<'a> Expr<'a> {
         Self::new(span, ExprKind::Hash(hash))
     }
 
-    pub(crate) fn call(span: Span, expr: Expr<'a>, args: Vec<Expr<'a>>) -> Self {
-        Self::new(span, ExprKind::Call(expr.into(), args))
-    }
-
     pub(crate) fn index(span: Span, expr: Expr<'a>, index: Expr<'a>) -> Self {
         Self::new(span, ExprKind::Index(expr.into(), index.into()))
     }
@@ -94,7 +90,6 @@ pub enum ExprKind<'a> {
     Name(Ident<'a>),
     List(Vec<Expr<'a>>),
     Hash(Vec<(Field<'a>, Expr<'a>)>),
-    Call(Box<Expr<'a>>, Vec<Expr<'a>>),
     Index(Box<Expr<'a>>, Box<Expr<'a>>),
     Field(Box<Expr<'a>>, Field<'a>),
     UnOp(Spanned<UnOp>, Box<Expr<'a>>),
