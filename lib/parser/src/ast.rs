@@ -74,6 +74,22 @@ impl<'a> Expr<'a> {
         Self::new(span, ExprKind::BoolOp(op, lhs.into(), rhs.into()))
     }
 
+    pub(crate) fn insert(span: Span, insert: Insert<'a>) -> Self {
+        Self::new(span, ExprKind::Insert(insert.into()))
+    }
+
+    pub(crate) fn update(span: Span, update: Update<'a>) -> Self {
+        Self::new(span, ExprKind::Update(update.into()))
+    }
+
+    pub(crate) fn delete(span: Span, delete: Delete<'a>) -> Self {
+        Self::new(span, ExprKind::Delete(delete.into()))
+    }
+
+    pub(crate) fn select(span: Span, select: Select<'a>) -> Self {
+        Self::new(span, ExprKind::Select(select.into()))
+    }
+
     pub(crate) fn assign(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
         let span = lhs.span.start..rhs.span.end;
         Self::new(span, ExprKind::Assign(lhs.into(), rhs.into()))
@@ -97,6 +113,10 @@ pub enum ExprKind<'a> {
     BinOp(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     RelOp(Spanned<RelOp>, Box<Expr<'a>>, Box<Expr<'a>>),
     BoolOp(Spanned<BoolOp>, Box<Expr<'a>>, Box<Expr<'a>>),
+    Insert(Box<Insert<'a>>),
+    Update(Box<Update<'a>>),
+    Delete(Box<Delete<'a>>),
+    Select(Box<Select<'a>>),
     Assign(Box<Expr<'a>>, Box<Expr<'a>>),
     CompoundAssign(Spanned<BinOp>, Box<Expr<'a>>, Box<Expr<'a>>),
 }
@@ -176,4 +196,45 @@ pub enum RelOp {
 pub enum BoolOp {
     Or,
     And,
+}
+
+#[derive(Clone, Debug)]
+pub struct Insert<'a> {
+    pub into: Expr<'a>,
+    pub values: Vec<Expr<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Update<'a> {
+    pub from: FromClause<'a>,
+    pub updates: Vec<Expr<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Delete<'a> {
+    pub from: FromClause<'a>,
+    pub deletes: Vec<Expr<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Select<'a> {
+    pub from: FromClause<'a>,
+    pub project: Option<Expr<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FromClause<'a> {
+    pub span: Span,
+    pub bind: Ident<'a>,
+    pub source: Expr<'a>,
+    pub join: Option<JoinClause<'a>>,
+    pub filter: Option<Expr<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct JoinClause<'a> {
+    pub span: Span,
+    pub bind: Ident<'a>,
+    pub source: Expr<'a>,
+    pub filter: Option<Expr<'a>>,
 }

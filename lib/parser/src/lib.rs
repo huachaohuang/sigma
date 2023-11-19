@@ -48,6 +48,17 @@ impl<'a> Parser<'a> {
         self.saved = Some((span, token));
     }
 
+    fn maybe_kw(&mut self, x: &str) -> Result<Option<Span>> {
+        let (span, token) = self.take()?;
+        match token {
+            Token::Ident(s) if s == x => Ok(Some(span)),
+            _ => {
+                self.save(span, token);
+                Ok(None)
+            }
+        }
+    }
+
     fn expect_kw(&mut self, x: &str) -> Result<Span> {
         let (span, token) = self.take()?;
         match token {
@@ -108,7 +119,98 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     fn parse_expr(&mut self) -> Result<Expr<'a>> {
-        let expr = self.parse_lazy_or_expr()?;
+        let (span, token) = self.take()?;
+        let expr = match token {
+            Token::Ident(INTO) => self.parse_into_expr(span.start),
+            Token::Ident(FROM) => self.parse_from_expr(span.start),
+            _ => {
+                self.save(span, token);
+                self.parse_lazy_or_expr()
+            }
+        }?;
+        self.parse_assign_expr(expr)
+    }
+
+    fn parse_expr_list(&mut self) -> Result<(Span, Vec<Expr<'a>>)> {
+        let list = self.parse_separated_list(Self::parse_expr)?;
+        let span = list.first().unwrap().span.start..list.last().unwrap().span.end;
+        Ok((span, list))
+    }
+
+    fn parse_into_expr(&mut self, start: usize) -> Result<Expr<'a>> {
+        let into = self.parse_expr()?;
+        let (span, values) = self.parse_expr_list()?;
+        Ok(Expr::insert(start..span.end, Insert { into, values }))
+    }
+
+    fn parse_from_expr(&mut self, start: usize) -> Result<Expr<'a>> {
+        let from = self.parse_from_clause(start)?;
+        if self.maybe_kw(UPDATE)?.is_some() {
+            let (span, updates) = self.parse_expr_list()?;
+            return Ok(Expr::update(start..span.end, Update { from, updates }));
+        }
+        if self.maybe_kw(DELETE)?.is_some() {
+            let (span, deletes) = self.parse_expr_list()?;
+            return Ok(Expr::delete(start..span.end, Delete { from, deletes }));
+        }
+        let mut span = start..from.span.end;
+        let project = if self.maybe_kw(SELECT)?.is_some() {
+            let expr = self.parse_expr()?;
+            span.end = expr.span.end;
+            Some(expr)
+        } else {
+            None
+        };
+        Ok(Expr::select(span, Select { from, project }))
+    }
+
+    fn parse_from_clause(&mut self, start: usize) -> Result<FromClause<'a>> {
+        let bind = self.parse_ident()?;
+        self.expect_kw(IN)?;
+        let source = self.parse_expr()?;
+        let mut span = start..source.span.end;
+        let join = if let Some(join_span) = self.maybe_kw(JOIN)? {
+            let join = self.parse_join_clause(join_span.start)?;
+            span.end = join.span.end;
+            Some(join)
+        } else {
+            None
+        };
+        let filter = if self.maybe_kw(WHERE)?.is_some() {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        Ok(FromClause {
+            span,
+            bind,
+            source,
+            join,
+            filter,
+        })
+    }
+
+    fn parse_join_clause(&mut self, start: usize) -> Result<JoinClause<'a>> {
+        let bind = self.parse_ident()?;
+        self.expect_kw(IN)?;
+        let source = self.parse_expr()?;
+        let mut span = start..source.span.end;
+        let filter = if self.maybe_kw(ON)?.is_some() {
+            let expr = self.parse_expr()?;
+            span.end = expr.span.end;
+            Some(expr)
+        } else {
+            None
+        };
+        Ok(JoinClause {
+            span,
+            bind,
+            source,
+            filter,
+        })
+    }
+
+    fn parse_assign_expr(&mut self, expr: Expr<'a>) -> Result<Expr<'a>> {
         let (span, token) = self.take()?;
         let kind = match token {
             Token::Punct(Punct::Eq) => {
@@ -378,6 +480,17 @@ impl<'a> Parser<'a> {
     fn parse_bracket_expr(&mut self, start: usize) -> Result<Expr<'a>> {
         self.parse_terminated_list(Punct::RBracket, Self::parse_expr)
             .map(|(list, span)| Expr::list(start..span.end, list))
+    }
+
+    fn parse_separated_list<O>(
+        &mut self,
+        mut f: impl FnMut(&mut Self) -> Result<O>,
+    ) -> Result<Vec<O>> {
+        let mut list = vec![f(self)?];
+        while self.maybe_punct(Punct::Comma)?.is_some() {
+            list.push(f(self)?);
+        }
+        Ok(list)
     }
 
     fn parse_terminated_list<O>(

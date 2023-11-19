@@ -64,6 +64,10 @@ impl Runtime {
             ExprKind::BinOp(op, lhs, rhs) => self.eval_binop(op, lhs, rhs),
             ExprKind::RelOp(op, lhs, rhs) => self.eval_relop(op, lhs, rhs),
             ExprKind::BoolOp(op, lhs, rhs) => self.eval_boolop(op, lhs, rhs),
+            ExprKind::Insert(insert) => self.eval_insert(insert),
+            ExprKind::Update(update) => self.eval_update(update),
+            ExprKind::Delete(delete) => self.eval_delete(delete),
+            ExprKind::Select(select) => self.eval_select(select),
             ExprKind::Assign(lhs, rhs) => self.eval_assign(lhs, rhs),
             ExprKind::CompoundAssign(op, lhs, rhs) => self.eval_compound_assign(op, lhs, rhs),
         }
@@ -158,6 +162,22 @@ impl Runtime {
                 BoolOp::And => Ok(this),
             }
         }
+    }
+
+    fn eval_insert(&self, insert: &Insert) -> Result<Object> {
+        todo!()
+    }
+
+    fn eval_update(&self, update: &Update) -> Result<Object> {
+        todo!()
+    }
+
+    fn eval_delete(&self, delete: &Delete) -> Result<Object> {
+        todo!()
+    }
+
+    fn eval_select(&self, select: &Select) -> Result<Object> {
+        todo!()
     }
 
     fn eval_assign(&self, lhs: &Expr, rhs: &Expr) -> Result<Object> {
