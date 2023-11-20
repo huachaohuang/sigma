@@ -7,6 +7,7 @@ use sigma_parser::ast::*;
 
 mod bool;
 mod f64;
+mod func;
 mod hash;
 mod i64;
 mod list;
@@ -21,6 +22,10 @@ pub struct Object(RawObject<()>);
 impl Object {
     fn type_name(&self) -> &str {
         &self.0.type_data().name
+    }
+
+    pub(crate) fn call(&self, args: &[Object]) -> Result<Object> {
+        (self.0.type_data().call)(self, args)
     }
 
     pub(crate) fn index(&self, index: &Object) -> Result<Object> {
@@ -209,6 +214,8 @@ struct TypeData {
 
     format: fn(&Object, &mut fmt::Formatter) -> fmt::Result,
 
+    call: fn(&Object, &[Object]) -> Result<Object>,
+
     index: fn(&Object, &Object) -> Result<Object>,
     set_index: fn(&mut Object, &Object, Object) -> Result<()>,
 
@@ -231,17 +238,18 @@ impl Default for TypeData {
     fn default() -> Self {
         Self {
             name: String::new(),
-            format: |_, f| f.write_str(""),
-            index: |this, _| Err(unsupported(this, "index access")),
-            set_index: |this, _, _| Err(unsupported(this, "index access")),
-            field: |this, _| Err(unsupported(this, "field access")),
-            set_field: |this, _, _| Err(unsupported(this, "field access")),
+            format: |this, f| write!(f, "<{}>", this.type_name()),
+            call: |this, _| Err(unsupported(this, "is not callable")),
+            index: |this, _| Err(unsupported_operation(this, "index access")),
+            set_index: |this, _, _| Err(unsupported_operation(this, "index access")),
+            field: |this, _| Err(unsupported_operation(this, "field access")),
+            set_field: |this, _, _| Err(unsupported_operation(this, "field access")),
             compare: |_, _| None,
-            iter: |this| Err(unsupported(this, "iterate")),
-            iter_mut: |this| Err(unsupported(this, "iterate")),
-            insert: |this, _| Err(unsupported(this, "insert")),
-            replace: |this, _| Err(unsupported(this, "replace")),
-            contains: |this, _| Err(unsupported(this, "membership test")),
+            iter: |this| Err(unsupported(this, "is not iterable")),
+            iter_mut: |this| Err(unsupported(this, "is not iterable")),
+            insert: |this, _| Err(unsupported_operation(this, "insert")),
+            replace: |this, _| Err(unsupported_operation(this, "replace")),
+            contains: |this, _| Err(unsupported_operation(this, "membership test")),
             arithmetic: ArithmeticMethods::default(),
         }
     }
@@ -268,23 +276,27 @@ struct ArithmeticMethods {
 impl Default for ArithmeticMethods {
     fn default() -> Self {
         Self {
-            not: |this| Err(unsupported(this, "!")),
-            or: |this, _| Err(unsupported(this, "|")),
-            xor: |this, _| Err(unsupported(this, "^")),
-            and: |this, _| Err(unsupported(this, "&")),
-            shl: |this, _| Err(unsupported(this, "<<")),
-            shr: |this, _| Err(unsupported(this, ">>")),
-            neg: |this| Err(unsupported(this, "-")),
-            add: |this, _| Err(unsupported(this, "+")),
-            sub: |this, _| Err(unsupported(this, "-")),
-            mul: |this, _| Err(unsupported(this, "*")),
-            div: |this, _| Err(unsupported(this, "/")),
-            rem: |this, _| Err(unsupported(this, "%")),
+            not: |this| Err(unsupported_operation(this, "!")),
+            or: |this, _| Err(unsupported_operation(this, "|")),
+            xor: |this, _| Err(unsupported_operation(this, "^")),
+            and: |this, _| Err(unsupported_operation(this, "&")),
+            shl: |this, _| Err(unsupported_operation(this, "<<")),
+            shr: |this, _| Err(unsupported_operation(this, ">>")),
+            neg: |this| Err(unsupported_operation(this, "-")),
+            add: |this, _| Err(unsupported_operation(this, "+")),
+            sub: |this, _| Err(unsupported_operation(this, "-")),
+            mul: |this, _| Err(unsupported_operation(this, "*")),
+            div: |this, _| Err(unsupported_operation(this, "/")),
+            rem: |this, _| Err(unsupported_operation(this, "%")),
         }
     }
 }
 
-fn unsupported(this: &Object, op: &str) -> Error {
+fn unsupported(this: &Object, message: &str) -> Error {
+    Error::new(format!("'{}' {}", this.type_name(), message))
+}
+
+fn unsupported_operation(this: &Object, op: &str) -> Error {
     Error::new(format!(
         "'{}' doesn't support {} operation",
         this.type_name(),

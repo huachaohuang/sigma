@@ -68,6 +68,7 @@ impl Runtime {
             ExprKind::Name(name) => self.eval_name(name),
             ExprKind::List(list) => self.eval_list(list),
             ExprKind::Hash(hash) => self.eval_hash(hash),
+            ExprKind::Call(expr, args) => self.eval_call(expr, args),
             ExprKind::Index(expr, index) => self.eval_index(expr, index),
             ExprKind::Field(expr, field) => self.eval_field(expr, field),
             ExprKind::UnOp(op, expr) => self.eval_unop(op, expr),
@@ -123,6 +124,15 @@ impl Runtime {
             .map(|(field, expr)| self.eval(expr).map(|value| (field.name.to_owned(), value)))
             .collect::<Result<Vec<_>>>()
             .map(|hash| hash.into())
+    }
+
+    fn eval_call(&self, expr: &Expr, args: &[Expr]) -> Result<Object> {
+        let this = self.eval(expr)?;
+        let args = args
+            .iter()
+            .map(|expr| self.eval(expr))
+            .collect::<Result<Vec<_>>>()?;
+        this.call(&args)
     }
 
     fn eval_index(&self, expr: &Expr, index: &Expr) -> Result<Object> {

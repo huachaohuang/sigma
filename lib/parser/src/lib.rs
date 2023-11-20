@@ -399,6 +399,11 @@ impl<'a> Parser<'a> {
         loop {
             let (span, token) = self.take()?;
             match token {
+                Token::Punct(Punct::LParen) => {
+                    let (args, paren) =
+                        self.parse_terminated_list(Punct::RParen, Self::parse_expr)?;
+                    expr = Expr::call(expr.span.start..paren.end, expr, args);
+                }
                 Token::Punct(Punct::LBracket) => {
                     let index = self.parse_expr()?;
                     let bracket = self.expect_punct(Punct::RBracket)?;
