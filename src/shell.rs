@@ -30,14 +30,11 @@ impl Shell {
         let parser = Parser::new(line);
         for stmt in parser {
             match stmt {
-                Ok(stmt) => {
-                    println!("{stmt:?}");
-                    match self.rt.exec(&stmt) {
-                        Ok(Some(x)) => println!("{x}"),
-                        Ok(_) => {}
-                        Err(err) => print_error(line, err.span, err.message),
-                    }
-                }
+                Ok(stmt) => match self.rt.exec(&stmt) {
+                    Ok(Some(x)) => println!("{x}"),
+                    Ok(_) => {}
+                    Err(err) => print_error(line, err.span, err.message),
+                },
                 Err(err) => {
                     print_error(line, err.span, err.message);
                     break;

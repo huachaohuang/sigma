@@ -29,11 +29,11 @@ thread_local! {
             format,
             index,
             set_index,
-            contains,
             iter,
             iter_mut,
             insert,
             replace,
+            contains,
             ..Default::default()
         },
     });
@@ -82,11 +82,6 @@ fn list_index<'a>(index: &Object, len: usize) -> Result<usize> {
     }
 }
 
-fn contains(this: &Object, other: &Object) -> Result<bool> {
-    let list = unsafe { this.0.data::<List>() };
-    Ok(list.contains(other))
-}
-
 fn iter(this: &Object) -> Result<Iter> {
     let list = unsafe { this.0.data::<List>() };
     Ok(Box::new(list.iter()))
@@ -97,20 +92,25 @@ fn iter_mut(this: &mut Object) -> Result<IterMut> {
     Ok(Box::new(list.iter_mut()))
 }
 
-fn insert(this: &mut Object, value: Object) -> Result<()> {
+fn insert(this: &mut Object, other: Object) -> Result<()> {
     let list = unsafe { this.0.data_mut::<List>() };
-    list.push(value);
+    list.push(other);
     Ok(())
 }
 
-fn replace(this: &mut Object, mut value: Object) -> Result<()> {
+fn replace(this: &mut Object, mut other: Object) -> Result<()> {
     let list = unsafe { this.0.data_mut::<List>() };
-    if !value.is_list() {
+    if !other.is_list() {
         return Err(Error::new(format!(
             "cannot replace 'list' with '{}'",
-            value.type_name()
+            other.type_name()
         )));
     }
-    *list = std::mem::take(unsafe { value.0.data_mut() });
+    *list = std::mem::take(unsafe { other.0.data_mut() });
     Ok(())
+}
+
+fn contains(this: &Object, other: &Object) -> Result<bool> {
+    let list = unsafe { this.0.data::<List>() };
+    Ok(list.contains(other))
 }
