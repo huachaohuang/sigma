@@ -75,7 +75,7 @@ impl Runtime {
             ExprKind::Field(expr, field) => self.eval_field(expr, field),
             ExprKind::UnOp(op, expr) => self.eval_unop(op, expr),
             ExprKind::BinOp(op, lhs, rhs) => self.eval_binop(op, lhs, rhs),
-            ExprKind::RelOp(op, lhs, rhs) => self.eval_relop(op, lhs, rhs),
+            ExprKind::CmpOp(op, lhs, rhs) => self.eval_cmpop(op, lhs, rhs),
             ExprKind::BoolOp(op, lhs, rhs) => self.eval_boolop(op, lhs, rhs),
             ExprKind::Insert(insert) => self.eval_insert(insert),
             ExprKind::Update(update) => self.eval_update(update),
@@ -159,10 +159,10 @@ impl Runtime {
         this.binop(op.kind, &other)
     }
 
-    fn eval_relop(&self, op: &Spanned<RelOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
+    fn eval_cmpop(&self, op: &Spanned<CmpOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
         let this = self.eval(lhs)?;
         let other = self.eval(rhs)?;
-        this.relop(op.kind, &other)
+        this.cmpop(op.kind, &other)
     }
 
     fn eval_boolop(&self, op: &Spanned<BoolOp>, lhs: &Expr, rhs: &Expr) -> Result<Object> {
@@ -173,17 +173,24 @@ impl Runtime {
                 "left-hand side should be a boolean expression",
             )
         })?;
-        if is_true {
+        let other = if is_true {
             match op.kind {
-                BoolOp::Or => Ok(this),
-                BoolOp::And => self.eval(rhs),
+                BoolOp::Or => return Ok(this),
+                BoolOp::And => self.eval(rhs)?,
             }
         } else {
             match op.kind {
-                BoolOp::Or => self.eval(rhs),
-                BoolOp::And => Ok(this),
+                BoolOp::Or => self.eval(rhs)?,
+                BoolOp::And => return Ok(this),
             }
-        }
+        };
+        other.as_bool().ok_or_else(|| {
+            Error::with_span(
+                rhs.span.clone(),
+                "right-hand side should be a boolean expression",
+            )
+        })?;
+        Ok(other)
     }
 
     fn eval_insert(&self, insert: &Insert) -> Result<Object> {
@@ -198,51 +205,20 @@ impl Runtime {
     fn eval_update(&self, update: &Update) -> Result<Object> {
         let mut count = 0;
         let from = &update.from;
-        let from_name = from.bind.name;
-        let mut from_source = self.eval(&from.source)?;
-        if let Some(join) = from.join.as_ref() {
-            let join_name = join.bind.name;
-            let mut join_source = self.eval(&join.source)?;
-            for from_item in from_source.iter_mut()? {
-                for join_item in join_source.iter_mut()? {
-                    let vars = Vars::from_iter([
-                        (from_name.to_owned(), from_item.clone()),
-                        (join_name.to_owned(), join_item.clone()),
-                    ]);
-                    let inner = self.enter(vars);
-                    if let Some(filter) = join.filter.as_ref() {
-                        if !inner.eval_filter(filter)? {
-                            continue;
-                        }
-                    }
-                    if let Some(filter) = from.filter.as_ref() {
-                        if !inner.eval_filter(filter)? {
-                            continue;
-                        }
-                    }
-                    for expr in &update.updates {
-                        inner.eval(expr)?;
-                    }
-                    *from_item = inner.var(from_name).unwrap();
-                    *join_item = inner.var(join_name).unwrap();
-                    count += 1;
+        let name = from.bind.name;
+        let mut source = self.eval(&from.source)?;
+        for item in source.iter_mut()? {
+            let inner = self.enter([(name.to_owned(), item.clone())].into());
+            if let Some(filter) = from.filter.as_ref() {
+                if !inner.eval_filter(filter)? {
+                    continue;
                 }
             }
-        } else {
-            for from_item in from_source.iter_mut()? {
-                let vars = Vars::from_iter([(from_name.to_owned(), from_item.clone())]);
-                let inner = self.enter(vars);
-                if let Some(filter) = from.filter.as_ref() {
-                    if !inner.eval_filter(filter)? {
-                        continue;
-                    }
-                }
-                for expr in &update.updates {
-                    inner.eval(expr)?;
-                }
-                *from_item = inner.var(from_name).unwrap();
-                count += 1;
+            for expr in &update.exprs {
+                inner.eval(expr)?;
             }
+            *item = inner.var(name).unwrap();
+            count += 1;
         }
         Ok(count.into())
     }
@@ -250,80 +226,30 @@ impl Runtime {
     fn eval_delete(&self, delete: &Delete) -> Result<Object> {
         let mut count = 0;
         let from = &delete.from;
-        let from_name = from.bind.name;
-        let mut from_source = self.eval(&from.source)?;
+        let name = from.bind.name;
+        if delete.target.name != name {
+            return Err(Error::with_span(
+                delete.target.span.clone(),
+                "delete target should be the same as the bounded name",
+            ));
+        }
+        let mut source = self.eval(&from.source)?;
         let mut new_from_source = Vec::new();
-        if let Some(join) = from.join.as_ref() {
-            let join_name = join.bind.name;
-            let mut join_source = self.eval(&join.source)?;
-            let mut new_join_source = Vec::new();
-            let delete_names = self.eval_delete_names(&delete.deletes, &[from_name, join_name])?;
-            for from_item in from_source.iter()? {
-                for join_item in join_source.iter()? {
-                    let inner = self.enter(Vars::from_iter([
-                        (from_name.to_owned(), from_item.clone()),
-                        (join_name.to_owned(), join_item.clone()),
-                    ]));
-                    if let Some(filter) = join.filter.as_ref() {
-                        if !inner.eval_filter(filter)? {
-                            new_from_source.push(from_item.clone());
-                            new_join_source.push(join_item.clone());
-                            continue;
-                        }
-                    }
-                    if let Some(filter) = from.filter.as_ref() {
-                        if !inner.eval_filter(filter)? {
-                            new_from_source.push(from_item.clone());
-                            new_join_source.push(join_item.clone());
-                            continue;
-                        }
-                    }
-                    if !delete_names.contains(&from_name) {
-                        new_from_source.push(from_item.clone());
-                    }
-                    if !delete_names.contains(&join_name) {
-                        new_join_source.push(join_item.clone());
-                    }
-                    count += 1;
-                }
+        for item in source.iter()? {
+            let inner = self.enter([(name.to_owned(), item.clone())].into());
+            let delete = if let Some(filter) = from.filter.as_ref() {
+                inner.eval_filter(filter)?
+            } else {
+                true
+            };
+            if !delete {
+                new_from_source.push(item.clone());
+                continue;
             }
-            from_source.replace(new_from_source.into())?;
-            join_source.replace(new_join_source.into())?;
-        } else {
-            for from_item in from_source.iter()? {
-                self.eval_delete_names(&delete.deletes, &[from_name])?;
-                let vars = Vars::from_iter([(from_name.to_owned(), from_item.clone())]);
-                let inner = self.enter(vars);
-                if let Some(filter) = from.filter.as_ref() {
-                    if !inner.eval_filter(filter)? {
-                        new_from_source.push(from_item.clone());
-                        continue;
-                    }
-                }
-                count += 1;
-            }
-            from_source.replace(new_from_source.into())?;
+            count += 1;
         }
+        source.replace(new_from_source.into())?;
         Ok(count.into())
-    }
-
-    fn eval_delete_names<'e>(&self, exprs: &'e [Expr], names: &[&str]) -> Result<Vec<&'e str>> {
-        let mut output = Vec::new();
-        for expr in exprs {
-            match &expr.kind {
-                ExprKind::Name(ident) => {
-                    if !names.contains(&ident.name) {
-                        return Err(Error::with_span(ident.span.clone(), "unbounded name"));
-                    }
-                    if output.contains(&ident.name) {
-                        return Err(Error::with_span(ident.span.clone(), "duplicated name"));
-                    }
-                    output.push(ident.name);
-                }
-                _ => return Err(Error::with_span(expr.span.clone(), "expect a bounded name")),
-            }
-        }
-        Ok(output)
     }
 
     fn eval_select(&self, select: &Select) -> Result<Object> {
@@ -340,7 +266,7 @@ impl Runtime {
                         (from_name.to_owned(), from_item.clone()),
                         (join_name.to_owned(), join_item.clone()),
                     ]);
-                    let inner = self.enter(vars);
+                    let inner = self.enter(vars.clone());
                     if let Some(filter) = join.filter.as_ref() {
                         if !inner.eval_filter(filter)? {
                             continue;
@@ -352,9 +278,9 @@ impl Runtime {
                         }
                     }
                     let item = if let Some(project) = select.project.as_ref() {
-                        self.eval(project)?
+                        inner.eval(project)?
                     } else {
-                        from_item.clone()
+                        vars.into()
                     };
                     output.push(item);
                 }
@@ -367,7 +293,7 @@ impl Runtime {
                     }
                 }
                 let item = if let Some(project) = select.project.as_ref() {
-                    self.eval(project)?
+                    inner.eval(project)?
                 } else {
                     from_item.clone()
                 };

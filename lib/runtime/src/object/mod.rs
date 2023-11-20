@@ -68,16 +68,16 @@ impl Object {
         }
     }
 
-    pub(crate) fn relop(&self, op: RelOp, other: &Object) -> Result<Object> {
+    pub(crate) fn cmpop(&self, op: CmpOp, other: &Object) -> Result<Object> {
         let value = match op {
-            RelOp::Eq => self.compare(other)? == Ordering::Equal,
-            RelOp::Ne => self.compare(other)? != Ordering::Equal,
-            RelOp::Lt => self.compare(other)? == Ordering::Less,
-            RelOp::Le => self.compare(other)? != Ordering::Greater,
-            RelOp::Gt => self.compare(other)? == Ordering::Greater,
-            RelOp::Ge => self.compare(other)? != Ordering::Less,
-            RelOp::In => other.contains(self)?,
-            RelOp::NotIn => !other.contains(self)?,
+            CmpOp::Eq => self.compare(other)? == Ordering::Equal,
+            CmpOp::Ne => self.compare(other)? != Ordering::Equal,
+            CmpOp::Lt => self.compare(other)? == Ordering::Less,
+            CmpOp::Le => self.compare(other)? != Ordering::Greater,
+            CmpOp::Gt => self.compare(other)? == Ordering::Greater,
+            CmpOp::Ge => self.compare(other)? != Ordering::Less,
+            CmpOp::In => other.contains(self)?,
+            CmpOp::NotIn => !other.contains(self)?,
         };
         Ok(value.into())
     }
