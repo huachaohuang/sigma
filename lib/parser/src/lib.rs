@@ -139,6 +139,7 @@ impl<'a> Parser<'a> {
 
     fn parse_into_expr(&mut self, start: usize) -> Result<Expr<'a>> {
         let into = self.parse_expr()?;
+        self.expect_kw(INSERT)?;
         let (span, values) = self.parse_expr_list()?;
         Ok(Expr::insert(start..span.end, Insert { into, values }))
     }

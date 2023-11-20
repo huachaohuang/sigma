@@ -4,6 +4,12 @@ use super::*;
 
 type List = Vec<Object>;
 
+impl Object {
+    fn is_list(&self) -> bool {
+        TYPE.with(|t| self.0.is_type(t))
+    }
+}
+
 impl From<List> for Object {
     fn from(value: List) -> Self {
         Self(RawObject::new(TYPE.with(|t| t.clone()), value))
@@ -24,6 +30,10 @@ thread_local! {
             index,
             set_index,
             contains,
+            iter,
+            iter_mut,
+            insert,
+            replace,
             ..Default::default()
         },
     });
@@ -75,4 +85,32 @@ fn list_index<'a>(index: &Object, len: usize) -> Result<usize> {
 fn contains(this: &Object, other: &Object) -> Result<bool> {
     let list = unsafe { this.0.data::<List>() };
     Ok(list.contains(other))
+}
+
+fn iter(this: &Object) -> Result<Iter> {
+    let list = unsafe { this.0.data::<List>() };
+    Ok(Box::new(list.iter()))
+}
+
+fn iter_mut(this: &mut Object) -> Result<IterMut> {
+    let list = unsafe { this.0.data_mut::<List>() };
+    Ok(Box::new(list.iter_mut()))
+}
+
+fn insert(this: &mut Object, value: Object) -> Result<()> {
+    let list = unsafe { this.0.data_mut::<List>() };
+    list.push(value);
+    Ok(())
+}
+
+fn replace(this: &mut Object, mut value: Object) -> Result<()> {
+    let list = unsafe { this.0.data_mut::<List>() };
+    if !value.is_list() {
+        return Err(Error::new(format!(
+            "cannot replace 'list' with '{}'",
+            value.type_name()
+        )));
+    }
+    *list = std::mem::take(unsafe { value.0.data_mut() });
+    Ok(())
 }

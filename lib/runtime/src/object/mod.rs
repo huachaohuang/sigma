@@ -90,6 +90,22 @@ impl Object {
     fn contains(&self, other: &Object) -> Result<bool> {
         (self.0.type_data().contains)(self, other)
     }
+
+    pub(crate) fn iter(&self) -> Result<Iter> {
+        (self.0.type_data().iter)(self)
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> Result<IterMut> {
+        (self.0.type_data().iter_mut)(self)
+    }
+
+    pub(crate) fn insert(&mut self, other: Object) -> Result<()> {
+        (self.0.type_data().insert)(self, other)
+    }
+
+    pub(crate) fn replace(&mut self, other: Object) -> Result<()> {
+        (self.0.type_data().replace)(self, other)
+    }
 }
 
 impl Drop for Object {
@@ -133,19 +149,19 @@ impl<T> RawObject<T> {
     }
 
     fn unref(&self) {
-        let inner = self.as_mut();
+        let inner = unsafe { self.as_mut() };
         inner.rc -= 1;
         if inner.rc == 0 {
             drop(unsafe { Box::from_raw(self.0.as_ptr()) });
         }
     }
 
-    fn as_ref(&self) -> &Inner<T> {
+    unsafe fn as_ref(&self) -> &Inner<T> {
         unsafe { self.0.as_ref() }
     }
 
-    fn as_mut(&self) -> &mut Inner<T> {
-        unsafe { &mut *self.0.as_ptr() }
+    unsafe fn as_mut(&self) -> &mut Inner<T> {
+        &mut *self.0.as_ptr()
     }
 
     unsafe fn cast<U>(&self) -> &Inner<U> {
@@ -165,17 +181,17 @@ impl<T> RawObject<T> {
     }
 
     fn is_type(&self, ty: &RawObject<TypeData>) -> bool {
-        self.as_ref().ty.0 == ty.0
+        unsafe { self.as_ref().ty.0 == ty.0 }
     }
 
     fn type_data(&self) -> &TypeData {
-        &self.as_ref().ty.as_ref().data
+        unsafe { &self.as_ref().ty.as_ref().data }
     }
 }
 
 impl<T> Clone for RawObject<T> {
     fn clone(&self) -> Self {
-        let inner = self.as_mut();
+        let inner = unsafe { self.as_mut() };
         inner.rc += 1;
         Self(self.0)
     }
@@ -200,10 +216,15 @@ struct TypeData {
     set_field: fn(&mut Object, &str, Object) -> Result<()>,
 
     compare: fn(&Object, &Object) -> Option<Ordering>,
-
     contains: fn(&Object, &Object) -> Result<bool>,
 
     arithmetic: ArithmeticMethods,
+
+    iter: for<'a> fn(&'a Object) -> Result<Iter<'a>>,
+    iter_mut: fn(&mut Object) -> Result<IterMut>,
+
+    insert: fn(&mut Object, Object) -> Result<()>,
+    replace: fn(&mut Object, Object) -> Result<()>,
 }
 
 impl Default for TypeData {
@@ -218,6 +239,10 @@ impl Default for TypeData {
             compare: |_, _| None,
             contains: |this, _| Err(unsupported(this, "membership test")),
             arithmetic: ArithmeticMethods::default(),
+            iter: |this| Err(unsupported(this, "iterate")),
+            iter_mut: |this| Err(unsupported(this, "iterate")),
+            insert: |this, _| Err(unsupported(this, "insert")),
+            replace: |this, _| Err(unsupported(this, "replace")),
         }
     }
 }
@@ -255,6 +280,10 @@ impl Default for ArithmeticMethods {
         }
     }
 }
+
+pub(crate) type Iter<'a> = Box<dyn Iterator<Item = &'a Object> + 'a>;
+
+pub(crate) type IterMut<'a> = Box<dyn Iterator<Item = &'a mut Object> + 'a>;
 
 fn unsupported(this: &Object, op: &str) -> Error {
     Error::new(format!(

@@ -11,14 +11,14 @@ mod object;
 pub use object::Object;
 
 pub struct Runtime {
-    builtin: Builtin,
+    builtin: Rc<Builtin>,
     closure: Rc<RefCell<Closure>>,
 }
 
 impl Runtime {
     fn new() -> Self {
         object::init();
-        let builtin = Builtin::new();
+        let builtin = Rc::new(Builtin::new());
         let closure = Rc::new(RefCell::default());
         Self { builtin, closure }
     }
@@ -29,6 +29,16 @@ impl Runtime {
 
     fn set_var(&self, name: impl ToString, value: Object) {
         self.closure.borrow_mut().set_var(name.to_string(), value);
+    }
+
+    fn enter(&self, vars: Vars) -> Self {
+        Self {
+            builtin: self.builtin.clone(),
+            closure: Rc::new(RefCell::new(Closure {
+                vars,
+                outer: Some(self.closure.clone()),
+            })),
+        }
     }
 }
 
@@ -165,19 +175,203 @@ impl Runtime {
     }
 
     fn eval_insert(&self, insert: &Insert) -> Result<Object> {
-        todo!()
+        let mut this = self.eval(&insert.into)?;
+        for expr in &insert.values {
+            let value = self.eval(expr)?;
+            this.insert(value)?;
+        }
+        Ok((insert.values.len() as i64).into())
     }
 
     fn eval_update(&self, update: &Update) -> Result<Object> {
-        todo!()
+        let mut count = 0;
+        let from = &update.from;
+        let from_name = from.bind.name;
+        let mut from_source = self.eval(&from.source)?;
+        if let Some(join) = from.join.as_ref() {
+            let join_name = join.bind.name;
+            let mut join_source = self.eval(&join.source)?;
+            for from_item in from_source.iter_mut()? {
+                for join_item in join_source.iter_mut()? {
+                    let vars = Vars::from_iter([
+                        (from_name.to_owned(), from_item.clone()),
+                        (join_name.to_owned(), join_item.clone()),
+                    ]);
+                    let inner = self.enter(vars);
+                    if let Some(filter) = join.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            continue;
+                        }
+                    }
+                    if let Some(filter) = from.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            continue;
+                        }
+                    }
+                    for expr in &update.updates {
+                        inner.eval(expr)?;
+                    }
+                    *from_item = inner.var(from_name).unwrap();
+                    *join_item = inner.var(join_name).unwrap();
+                    count += 1;
+                }
+            }
+        } else {
+            for from_item in from_source.iter_mut()? {
+                let vars = Vars::from_iter([(from_name.to_owned(), from_item.clone())]);
+                let inner = self.enter(vars);
+                if let Some(filter) = from.filter.as_ref() {
+                    if !inner.eval_filter(filter)? {
+                        continue;
+                    }
+                }
+                for expr in &update.updates {
+                    inner.eval(expr)?;
+                }
+                *from_item = inner.var(from_name).unwrap();
+                count += 1;
+            }
+        }
+        Ok(count.into())
     }
 
     fn eval_delete(&self, delete: &Delete) -> Result<Object> {
-        todo!()
+        let mut count = 0;
+        let from = &delete.from;
+        let from_name = from.bind.name;
+        let mut from_source = self.eval(&from.source)?;
+        let mut new_from_source = Vec::new();
+        if let Some(join) = from.join.as_ref() {
+            let join_name = join.bind.name;
+            let mut join_source = self.eval(&join.source)?;
+            let mut new_join_source = Vec::new();
+            let delete_names = self.eval_delete_names(&delete.deletes, &[from_name, join_name])?;
+            for from_item in from_source.iter()? {
+                for join_item in join_source.iter()? {
+                    let inner = self.enter(Vars::from_iter([
+                        (from_name.to_owned(), from_item.clone()),
+                        (join_name.to_owned(), join_item.clone()),
+                    ]));
+                    if let Some(filter) = join.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            new_from_source.push(from_item.clone());
+                            new_join_source.push(join_item.clone());
+                            continue;
+                        }
+                    }
+                    if let Some(filter) = from.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            new_from_source.push(from_item.clone());
+                            new_join_source.push(join_item.clone());
+                            continue;
+                        }
+                    }
+                    if !delete_names.contains(&from_name) {
+                        new_from_source.push(from_item.clone());
+                    }
+                    if !delete_names.contains(&join_name) {
+                        new_join_source.push(join_item.clone());
+                    }
+                    count += 1;
+                }
+            }
+            from_source.replace(new_from_source.into())?;
+            join_source.replace(new_join_source.into())?;
+        } else {
+            for from_item in from_source.iter()? {
+                self.eval_delete_names(&delete.deletes, &[from_name])?;
+                let vars = Vars::from_iter([(from_name.to_owned(), from_item.clone())]);
+                let inner = self.enter(vars);
+                if let Some(filter) = from.filter.as_ref() {
+                    if !inner.eval_filter(filter)? {
+                        new_from_source.push(from_item.clone());
+                        continue;
+                    }
+                }
+                count += 1;
+            }
+            from_source.replace(new_from_source.into())?;
+        }
+        Ok(count.into())
+    }
+
+    fn eval_delete_names<'e>(&self, exprs: &'e [Expr], names: &[&str]) -> Result<Vec<&'e str>> {
+        let mut output = Vec::new();
+        for expr in exprs {
+            match &expr.kind {
+                ExprKind::Name(ident) => {
+                    if !names.contains(&ident.name) {
+                        return Err(Error::with_span(ident.span.clone(), "unbounded name"));
+                    }
+                    if output.contains(&ident.name) {
+                        return Err(Error::with_span(ident.span.clone(), "duplicated name"));
+                    }
+                    output.push(ident.name);
+                }
+                _ => return Err(Error::with_span(expr.span.clone(), "expect a bounded name")),
+            }
+        }
+        Ok(output)
     }
 
     fn eval_select(&self, select: &Select) -> Result<Object> {
-        todo!()
+        let mut output = Vec::new();
+        let from = &select.from;
+        let from_name = from.bind.name;
+        let from_source = self.eval(&from.source)?;
+        for from_item in from_source.iter()? {
+            if let Some(join) = from.join.as_ref() {
+                let join_name = join.bind.name;
+                let join_source = self.eval(&join.source)?;
+                for join_item in join_source.iter()? {
+                    let vars = Vars::from_iter([
+                        (from_name.to_owned(), from_item.clone()),
+                        (join_name.to_owned(), join_item.clone()),
+                    ]);
+                    let inner = self.enter(vars);
+                    if let Some(filter) = join.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            continue;
+                        }
+                    }
+                    if let Some(filter) = from.filter.as_ref() {
+                        if !inner.eval_filter(filter)? {
+                            continue;
+                        }
+                    }
+                    let item = if let Some(project) = select.project.as_ref() {
+                        self.eval(project)?
+                    } else {
+                        from_item.clone()
+                    };
+                    output.push(item);
+                }
+            } else {
+                let vars = Vars::from_iter([(from_name.to_owned(), from_item.clone())]);
+                let inner = self.enter(vars);
+                if let Some(filter) = from.filter.as_ref() {
+                    if !inner.eval_filter(filter)? {
+                        continue;
+                    }
+                }
+                let item = if let Some(project) = select.project.as_ref() {
+                    self.eval(project)?
+                } else {
+                    from_item.clone()
+                };
+                output.push(item);
+            }
+        }
+        Ok(output.into())
+    }
+
+    fn eval_filter(&self, filter: &Expr) -> Result<bool> {
+        self.eval(filter)?.as_bool().ok_or_else(|| {
+            Error::with_span(
+                filter.span.clone(),
+                "where clause should be a boolean expression",
+            )
+        })
     }
 
     fn eval_assign(&self, lhs: &Expr, rhs: &Expr) -> Result<Object> {
@@ -266,15 +460,16 @@ type Vars = HashMap<String, Object>;
 #[derive(Default)]
 struct Closure {
     vars: Vars,
-    outer: Option<Rc<Closure>>,
+    outer: Option<Rc<RefCell<Closure>>>,
 }
 
 impl Closure {
     fn var(&self, name: &str) -> Option<Object> {
-        self.vars
-            .get(name)
-            .cloned()
-            .or_else(|| self.outer.as_ref().and_then(|outer| outer.var(name)))
+        self.vars.get(name).cloned().or_else(|| {
+            self.outer
+                .as_ref()
+                .and_then(|outer| outer.borrow().var(name))
+        })
     }
 
     fn set_var(&mut self, name: String, value: Object) {
