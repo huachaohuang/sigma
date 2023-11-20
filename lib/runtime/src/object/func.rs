@@ -4,9 +4,10 @@ use super::*;
 
 type Func = Box<dyn Fn(&Object, &[Object]) -> Result<Object>>;
 
-impl<T: Fn(&Object, &[Object]) -> Result<Object>> From<T> for Object {
+impl<T: Fn(&Object, &[Object]) -> Result<Object> + 'static> From<T> for Object {
     fn from(value: T) -> Self {
-        Self(RawObject::new(TYPE.with(|t| t.clone()), Box::new(value)))
+        let func: Func = Box::new(value);
+        Self(RawObject::new(TYPE.with(|t| t.clone()), func))
     }
 }
 

@@ -10,6 +10,8 @@ pub use error::{Error, Result};
 mod object;
 pub use object::Object;
 
+mod json;
+
 pub struct Runtime {
     builtin: Rc<Builtin>,
     closure: Rc<RefCell<Closure>>,
@@ -460,7 +462,7 @@ impl Builtin {
             null: ().into(),
             true_: true.into(),
             false_: false.into(),
-            modules: HashMap::new(),
+            modules: [("json".into(), json::module())].into(),
         }
     }
 }
